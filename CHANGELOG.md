@@ -69,8 +69,9 @@
 
 ### 文档 (docs)
 
-- 新建 `AGENTS.md`（AI 协作规范与硬约束）、`docs/PROJECT-SPEC.md`、`docs/ARCHITECTURE.md`、
-  `docs/DEVELOPMENT.md`、`docs/COMPONENT-GUIDELINES.md`、`CHANGELOG.md`、`TODO.md`。
+- 新建 `AGENTS.md`（AI 协作规范与硬约束）、`DESIGN.md`（界面设计规范）、
+  `docs/PROJECT-SPEC.md`、`docs/ARCHITECTURE.md`、`docs/DEVELOPMENT.md`、
+  `docs/COMPONENT-GUIDELINES.md`、`CHANGELOG.md`、`TODO.md`。
 - README 充实技术栈与目录说明。
 
 ---

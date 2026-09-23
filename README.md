@@ -51,6 +51,7 @@ Windows 静默安装：先 `taskkill //IM WeFlow.exe //F` 退出旧版，再
 | 文档 | 内容 |
 |---|---|
 | [AGENTS.md](AGENTS.md) | AI 协作规范与硬约束（接力开发前必读） |
+| [DESIGN.md](DESIGN.md) | 界面设计规范：主题系统、设计令牌、字号间距、复用组件类 |
 | [docs/PROJECT-SPEC.md](docs/PROJECT-SPEC.md) | 项目定位、技术选型、功能范围 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构分层、目录结构、核心数据通路、Jev 链路 |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 开发、构建、测试、打包、排障 |
