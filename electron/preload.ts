@@ -682,5 +682,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   social: {
     saveWeiboCookie: (rawInput: string) => ipcRenderer.invoke('social:saveWeiboCookie', rawInput),
     validateWeiboUid: (uid: string) => ipcRenderer.invoke('social:validateWeiboUid', uid)
+  },
+
+  // Jev 回复助手：判断当前会话值不值得回、起 3 条候选、排序
+  jev: {
+    getConfig: () => ipcRenderer.invoke('jev:getConfig'),
+    testConnection: () => ipcRenderer.invoke('jev:testConnection'),
+    analyzeSession: (payload: {
+      sessionId: string
+      replyTo?: string | null
+      messages?: any[]
+      forceRefresh?: boolean
+    }) => ipcRenderer.invoke('jev:analyzeSession', payload)
   }
 })

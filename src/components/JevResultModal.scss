@@ -1,0 +1,349 @@
+.jev-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: jevFadeIn 0.2s ease-out;
+}
+
+.jev-modal-content {
+  width: min(560px, calc(100vw - 32px));
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  animation: jevSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes jevFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes jevSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.jev-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  svg {
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+
+  // 浅色底上的浅蓝头像，需要一圈描边才不至于糊在背景里
+  .jev-modal-avatar {
+    box-shadow: 0 0 0 1px var(--border-color);
+  }
+}
+
+.jev-modal-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+.jev-modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.jev-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+// ---------- 三状态 ----------
+
+.jev-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.jev-state-loading {
+  justify-content: center;
+
+  .spin { animation: jevSpin 1s linear infinite; }
+}
+
+@keyframes jevSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.jev-state-error {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+
+  > svg { color: var(--danger, #ef4444); flex-shrink: 0; }
+  > span { font-size: 13.5px; line-height: 1.6; }
+}
+
+.jev-settings-btn {
+  font-size: 13px;
+  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+// ---------- 判断摘要 ----------
+
+.jev-verdict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.jev-verdict-yes {
+  background: color-mix(in srgb, var(--primary, #10a37f) 12%, transparent);
+  color: var(--primary, #10a37f);
+}
+
+.jev-verdict-no {
+  background: color-mix(in srgb, var(--warning, #f59e0b) 14%, transparent);
+  color: var(--warning, #f59e0b);
+}
+
+.jev-verdict-pct {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+// ---------- 危险等级 ----------
+
+.jev-danger {
+  padding: 10px 14px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+.jev-danger-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.jev-danger-label {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.jev-danger-value {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.jev-danger-high { color: var(--danger, #ef4444); }
+.jev-danger-mid  { color: var(--warning, #f59e0b); }
+.jev-danger-low  { color: var(--primary, #10a37f); }
+.jev-danger-unknown { color: var(--text-tertiary); }
+
+.jev-danger-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.jev-danger-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.jev-danger-fill-high { background: var(--danger, #ef4444); }
+.jev-danger-fill-mid  { background: var(--warning, #f59e0b); }
+.jev-danger-fill-low  { background: var(--primary, #10a37f); }
+
+// ---------- 候选回复 ----------
+
+.jev-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.jev-cand {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.jev-cand-best {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.jev-cand-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.jev-cand-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.jev-cand-idx {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.jev-cand-score {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.jev-cand-copy {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.jev-cand-text {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.jev-empty {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+// ---------- 判断明细 ----------
+
+.jev-detail {
+  margin-top: 14px;
+
+  summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+    user-select: none;
+    padding: 4px 0;
+
+    &:hover { color: var(--text-secondary); }
+  }
+}
+
+.jev-detail-list {
+  margin-top: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.jev-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+  }
+}
+
+.jev-detail-key {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.jev-detail-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-align: right;
+  flex: 1;
+  word-break: break-word;
+}
+
+.jev-detail-conf {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.jev-footnote {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.jev-copy-best {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}

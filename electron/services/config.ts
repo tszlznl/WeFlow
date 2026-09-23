@@ -129,6 +129,33 @@ interface ConfigSchema {
   /** Telegram 接收 Chat ID，逗号分隔，支持多个 */
   aiInsightTelegramChatIds: string
 
+  // Jev 对话副驾（从 jev-chat-windows 移植的判断内核）
+  jevEnabled: boolean
+  /** 你们的关系：恋人/朋友/同事/家人/自定义，判断和起草都按它把握称呼和分寸 */
+  jevRelationship: string
+  /** 参考上下文条数，3~30，起草和判断各看最近这么多条 */
+  jevContext: number
+  /** 说话风格（可选）：一句话描述自己的口吻，只喂给起草 */
+  jevStyle: string
+  /** 起草走哪家：openrouter 或 deepseek 直连 */
+  jevDraftProvider: 'openrouter' | 'deepseek'
+  /** 起草时开思考模式，慢且贵，默认关 */
+  jevThinking: boolean
+  /** 判断接口走哪家：typesafe 官方 / openrouter；留空按 endpoint 猜 */
+  jevJudgeProvider: 'typesafe' | 'openrouter' | ''
+  /** 判断接口端点；留空按 provider 取默认（typesafe → api.typesafe.ai/v1/systemone） */
+  jevJudgeEndpoint: string
+  /** 判断接口 API Key，判断和排序必用 */
+  jevJudgeApiKey: string
+  /** 判断模型；留空按 provider 取默认（typesafe → jev-latest） */
+  jevJudgeModel: string
+  /** 起草接口地址（OpenAI 兼容，到 /v1）；留空继承共享模型配置 aiModelApiBaseUrl */
+  jevDraftApiBaseUrl: string
+  /** 起草接口 Key；留空继承共享模型配置 aiModelApiKey */
+  jevDraftApiKey: string
+  /** 起草模型；留空继承共享模型配置 aiModelApiModel */
+  jevDraftApiModel: string
+
   // AI 足迹
   aiFootprintEnabled: boolean
   aiFootprintSystemPrompt: string
@@ -154,7 +181,9 @@ const ENCRYPTED_STRING_KEYS: Set<string> = new Set([
   'httpApiToken',
   'aiModelApiKey',
   'aiInsightApiKey',
-  'aiInsightWeiboCookie'
+  'aiInsightWeiboCookie',
+  'jevJudgeApiKey',
+  'jevDraftApiKey'
 ])
 const ENCRYPTED_BOOL_KEYS: Set<string> = new Set(['authEnabled', 'authUseHello'])
 const ENCRYPTED_NUMBER_KEYS: Set<string> = new Set(['imageXorKey'])
@@ -272,6 +301,19 @@ export class ConfigService {
       aiInsightTelegramChatIds: '',
       aiInsightWeiboCookie: '',
       aiInsightWeiboBindings: {},
+      jevEnabled: false,
+      jevRelationship: '朋友',
+      jevContext: 10,
+      jevStyle: '',
+      jevDraftProvider: 'openrouter',
+      jevThinking: false,
+      jevJudgeProvider: 'typesafe',
+      jevJudgeEndpoint: '',
+      jevJudgeApiKey: '',
+      jevJudgeModel: '',
+      jevDraftApiBaseUrl: '',
+      jevDraftApiKey: '',
+      jevDraftApiModel: '',
       aiFootprintEnabled: false,
       aiFootprintSystemPrompt: '',
       aiGroupSummaryEnabled: false,

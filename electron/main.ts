@@ -38,6 +38,7 @@ import { normalizeWeiboCookieInput, weiboService } from './services/social/weibo
 import { bizService } from './services/bizService'
 import { backupService } from './services/backupService'
 import { imageDownloadService } from './services/imageDownloadService'
+import { jevService } from './services/jevService'
 
 // 屏幕采集去节流（仅影响通知玻璃的 Chromium 流回退管线；Windows 主路径为
 // 原生面板渲染，不经过 Chromium 采集）：默认桌面采集 CPU 预算限制在 50%，
@@ -2148,6 +2149,32 @@ function registerIpcHandlers() {
     date: string
   }) => {
     return groupSummaryService.triggerDay(payload)
+  })
+
+  // Jev 对话副驾（判断内核从 jev-chat-windows 移植）
+  ipcMain.handle('jev:getConfig', async () => {
+    return jevService.getConfig()
+  })
+
+  ipcMain.handle('jev:testConnection', async () => {
+    return jevService.testConnection()
+  })
+
+  ipcMain.handle('jev:analyzeSession', async (_, payload: {
+    sessionId: string
+    replyTo?: string | null
+    messages?: any[]
+    forceRefresh?: boolean
+  }) => {
+    if (!payload || typeof payload.sessionId !== 'string') {
+      return { success: false, error: '缺少 sessionId' }
+    }
+    return jevService.analyzeSession({
+      sessionId: payload.sessionId,
+      replyTo: payload.replyTo ?? null,
+      messages: Array.isArray(payload.messages) ? payload.messages : undefined,
+      forceRefresh: payload.forceRefresh === true
+    })
   })
 
   ipcMain.handle('social:saveWeiboCookie', async (_, rawInput: string) => {

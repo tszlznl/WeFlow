@@ -113,6 +113,12 @@ interface CallApiOptions {
   disableThinking?: boolean
   useMaxCompletionTokens?: boolean
   responseFormatJson?: boolean
+  /**
+   * 直接并入请求体的额外字段。各家供应商的特有开关走这里（如 DeepSeek 的
+   * thinking、reasoning effort），避免每加一家就改这个公共函数。
+   * 与 disableThinking 冲突时以 extraBody 为准（调用方明确要开就别替人关掉）。
+   */
+  extraBody?: Record<string, unknown>
 }
 
 class ApiRequestError extends Error {
@@ -304,8 +310,10 @@ function shouldFallbackJsonMode(error: unknown): boolean {
 /**
  * 调用 OpenAI 兼容 API（非流式），返回模型第一条消息内容。
  * 使用 Node 原生 https/http 模块，无需任何第三方 SDK。
+ *
+ * 导出供 jev 内核的起草模块复用（jev/draft.ts）——同一条 OpenAI 兼容接口，没必要写两份。
  */
-function callApi(
+export function callApi(
   apiBaseUrl: string,
   apiKey: string,
   model: string,
@@ -336,9 +344,13 @@ function callApi(
     } else {
       payload.max_tokens = normalizedMaxTokens
     }
-    if (options.disableThinking) {
+    if (options.disableThinking && !options.extraBody) {
       payload.thinking = { type: 'disabled' }
       payload.enable_thinking = false
+    }
+    if (options.extraBody) {
+      // 调用方明确要控制思考开关时，以它为准
+      Object.assign(payload, options.extraBody)
     }
     if (options?.responseFormatJson) {
       payload.response_format = { type: 'json_object' }

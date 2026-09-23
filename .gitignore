@@ -85,3 +85,13 @@ weflow-web-offical
 /scripts/syncWedecrypt.py
 /scripts/syncWelive.py
 /WeLive
+
+# Jev 消融实验产物（本地跑的，含完整调用记录，不进仓库）
+.ablation/
+
+# agy 审查/任务的工作目录与临时 prompt
+.agy-staff/
+.agy-review-prompt.txt
+
+# electron-builder 打包时漏到根目录的 main bundle（真正的在 dist-electron/，已忽略）
+/main.js

@@ -1706,6 +1706,42 @@ export interface ElectronAPI {
       date: string
     }) => Promise<{ success: boolean; message: string; generated: number; skipped: number; records: GroupSummaryRecordSummary[] }>
   }
+  jev: {
+    getConfig: () => Promise<JevConfig>
+    testConnection: () => Promise<{ success: boolean; message: string }>
+    analyzeSession: (payload: {
+      sessionId: string
+      replyTo?: string | null
+      messages?: any[]
+      forceRefresh?: boolean
+    }) => Promise<JevAnalysisResult & { success: boolean; error?: string }>
+  }
+}
+
+export interface JevConfig {
+  enabled: boolean
+  relationship: string
+  context: number
+  style: string
+  draftProvider: 'openrouter' | 'deepseek'
+  thinking: boolean
+  judgeProvider: 'typesafe' | 'openrouter' | ''
+  judgeEndpoint: string
+  judgeApiKey: string
+  judgeModel: string
+  draftApiBaseUrl: string
+  draftApiKey: string
+  draftModel: string
+}
+
+export interface JevAnalysisResult {
+  candidates: string[]
+  bestIndex: number
+  bestReply: string
+  scores: number[]
+  answers: Record<string, any>
+  usage: Record<string, unknown>
+  replyTo?: string | null
 }
 
 export interface ExportOptions {

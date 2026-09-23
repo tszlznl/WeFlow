@@ -19,6 +19,8 @@ import type { ChatSession } from '../../types/models'
 import type { BatchVoiceTaskType } from '../../stores/batchTranscribeStore'
 import { displayNameOrFallback } from '../../utils/displayName'
 
+const JEV_AVATAR_URL = './assets/jev/jev-avatar.png'
+
 export interface ChatHeaderProps {
   session: ChatSession
   isGroupChat: boolean
@@ -40,11 +42,14 @@ export interface ChatHeaderProps {
   isBatchDecrypting: boolean
   batchImageDecryptProgress?: { current: number; total: number }
   isTriggeringSessionInsight: boolean
+  jevEnabled: boolean
+  isAnalyzingJev: boolean
   isRefreshingMessages: boolean
   isLoadingMessages: boolean
   currentSessionId?: string | null
   jumpCalendarWrapRef: React.RefObject<HTMLDivElement | null>
   onTriggerSessionInsight: () => void
+  onAnalyzeJev: () => void
   onToggleGroupSummaryPanel: () => void
   onGroupAnalytics: () => void
   onToggleGroupMembersPanel: () => void
@@ -79,11 +84,14 @@ function ChatHeader({
   isBatchDecrypting,
   batchImageDecryptProgress,
   isTriggeringSessionInsight,
+  jevEnabled,
+  isAnalyzingJev,
   isRefreshingMessages,
   isLoadingMessages,
   currentSessionId,
   jumpCalendarWrapRef,
   onTriggerSessionInsight,
+  onAnalyzeJev,
   onToggleGroupSummaryPanel,
   onGroupAnalytics,
   onToggleGroupMembersPanel,
@@ -137,6 +145,19 @@ function ChatHeader({
         >
           {isTriggeringSessionInsight ? <Loader2 size={18} className="spin" /> : <Sparkles size={18} />}
         </button>
+        {jevEnabled && (
+          <button
+            className={`icon-btn jev-analyze-btn${isAnalyzingJev ? ' triggering' : ''}`}
+            onClick={onAnalyzeJev}
+            disabled={!currentSessionId || isAnalyzingJev}
+            title={isAnalyzingJev ? '正在分析当前会话' : 'Jev：分析当前会话，起草回复候选'}
+            aria-label="Jev 分析当前会话"
+          >
+            {isAnalyzingJev
+              ? <Loader2 size={18} className="spin" />
+              : <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={18} height={18} />}
+          </button>
+        )}
         {isGroupChat && aiGroupSummaryEnabled && (
           <button
             className={`icon-btn group-summary-btn ${showGroupSummaryPanel ? 'active' : ''}`}
@@ -283,11 +304,14 @@ function areEqual(prev: ChatHeaderProps, next: ChatHeaderProps) {
     prev.batchImageDecryptProgress?.current === next.batchImageDecryptProgress?.current &&
     prev.batchImageDecryptProgress?.total === next.batchImageDecryptProgress?.total &&
     prev.isTriggeringSessionInsight === next.isTriggeringSessionInsight &&
+    prev.jevEnabled === next.jevEnabled &&
+    prev.isAnalyzingJev === next.isAnalyzingJev &&
     prev.isRefreshingMessages === next.isRefreshingMessages &&
     prev.isLoadingMessages === next.isLoadingMessages &&
     prev.currentSessionId === next.currentSessionId &&
     prev.jumpCalendarWrapRef === next.jumpCalendarWrapRef &&
     prev.onTriggerSessionInsight === next.onTriggerSessionInsight &&
+    prev.onAnalyzeJev === next.onAnalyzeJev &&
     prev.onToggleGroupSummaryPanel === next.onToggleGroupSummaryPanel &&
     prev.onGroupAnalytics === next.onGroupAnalytics &&
     prev.onToggleGroupMembersPanel === next.onToggleGroupMembersPanel &&

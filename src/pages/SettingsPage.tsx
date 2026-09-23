@@ -21,6 +21,8 @@ import { Avatar } from '../components/Avatar'
 import { displayNameOrFallback } from '../utils/displayName'
 import './SettingsPage.scss'
 
+const JEV_AVATAR_URL = './assets/jev/jev-avatar.png'
+
 type SettingsTab =
   | 'appearance'
   | 'notification'
@@ -38,6 +40,7 @@ type SettingsTab =
   | 'aiFootprint'
   | 'aiGroupSummary'
   | 'aiMessageInsight'
+  | 'jev'
   | 'autoDownload'
 
 const tabs: { id: Exclude<SettingsTab, 'insight' | 'aiFootprint' | 'aiMessageInsight'>; label: string; icon: React.ElementType }[] = [
@@ -65,12 +68,13 @@ const filteredTabs = tabs.filter(tab => {
   return true
 })
 
-const aiTabs: Array<{ id: Extract<SettingsTab, 'aiCommon' | 'insight' | 'aiFootprint' | 'aiGroupSummary' | 'aiMessageInsight'>; label: string }> = [
+const aiTabs: Array<{ id: Extract<SettingsTab, 'aiCommon' | 'insight' | 'aiFootprint' | 'aiGroupSummary' | 'aiMessageInsight' | 'jev'>; label: string }> = [
   { id: 'aiCommon', label: '基础配置' },
   { id: 'insight', label: 'AI 见解' },
   { id: 'aiFootprint', label: 'AI 足迹' },
   { id: 'aiGroupSummary', label: '群聊总结' },
-  { id: 'aiMessageInsight', label: '消息解析' }
+  { id: 'aiMessageInsight', label: '消息解析' },
+  { id: 'jev', label: 'Jev 助手' }
 ]
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
@@ -350,6 +354,26 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   const [aiMessageInsightContextCount, setAiMessageInsightContextCount] = useState(50)
   const [aiMessageInsightSystemPrompt, setAiMessageInsightSystemPrompt] = useState('')
 
+  // Jev 助手 state
+  const [jevEnabled, setJevEnabled] = useState(false)
+  const [jevRelationship, setJevRelationship] = useState('朋友')
+  const [jevContext, setJevContext] = useState(10)
+  const [jevStyle, setJevStyle] = useState('')
+  const [jevDraftProvider, setJevDraftProvider] = useState<'openrouter' | 'deepseek'>('openrouter')
+  const [jevThinking, setJevThinking] = useState(false)
+  const [jevJudgeProvider, setJevJudgeProvider] = useState<'typesafe' | 'openrouter'>('typesafe')
+  const [jevJudgeEndpoint, setJevJudgeEndpoint] = useState('')
+  const [jevJudgeApiKey, setJevJudgeApiKey] = useState('')
+  const [jevJudgeModel, setJevJudgeModel] = useState('')
+  const [jevDraftApiBaseUrl, setJevDraftApiBaseUrl] = useState('')
+  const [jevDraftApiKey, setJevDraftApiKey] = useState('')
+  const [jevDraftApiModel, setJevDraftApiModel] = useState('')
+  const [isTestingJev, setIsTestingJev] = useState(false)
+  const [jevTestResult, setJevTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [showJevJudgeKey, setShowJevJudgeKey] = useState(false)
+  const [showJevDraftKey, setShowJevDraftKey] = useState(false)
+  const [jevCfgLoaded, setJevCfgLoaded] = useState(false)
+
   // 自动下载图片
   const [autoDownloadStatus, setAutoDownloadStatus] = useState<{ isHooked: boolean; pid: number | null; supported: boolean } | null>(null)
   const [autoDownloadSelectedIds, setAutoDownloadSelectedIds] = useState<Set<string>>(new Set())
@@ -394,7 +418,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   }, [location.state])
 
   useEffect(() => {
-    if (activeTab === 'aiCommon' || activeTab === 'insight' || activeTab === 'aiFootprint' || activeTab === 'aiGroupSummary' || activeTab === 'aiMessageInsight') {
+    if (activeTab === 'aiCommon' || activeTab === 'insight' || activeTab === 'aiFootprint' || activeTab === 'aiGroupSummary' || activeTab === 'aiMessageInsight' || activeTab === 'jev') {
       setAiGroupExpanded(true)
     }
   }, [activeTab])
@@ -652,6 +676,27 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       setAiMessageInsightEnabled(savedAiMessageInsightEnabled)
       setAiMessageInsightContextCount(savedAiMessageInsightContextCount)
       setAiMessageInsightSystemPrompt(savedAiMessageInsightSystemPrompt)
+
+      // 加载 Jev 助手配置（后端已聚合成一个对象，一次性拿回来）
+      try {
+        const jevCfg = await window.electronAPI.jev.getConfig()
+        setJevEnabled(jevCfg.enabled === true)
+        setJevRelationship(jevCfg.relationship || '朋友')
+        setJevContext(typeof jevCfg.context === 'number' && jevCfg.context > 0 ? jevCfg.context : 10)
+        setJevStyle(jevCfg.style || '')
+        setJevDraftProvider(jevCfg.draftProvider === 'deepseek' ? 'deepseek' : 'openrouter')
+        setJevThinking(jevCfg.thinking === true)
+        setJevJudgeProvider(jevCfg.judgeProvider === 'openrouter' ? 'openrouter' : 'typesafe')
+        setJevJudgeEndpoint(jevCfg.judgeEndpoint || '')
+        setJevJudgeApiKey(jevCfg.judgeApiKey || '')
+        setJevJudgeModel(jevCfg.judgeModel || '')
+        setJevDraftApiBaseUrl(jevCfg.draftApiBaseUrl || '')
+        setJevDraftApiKey(jevCfg.draftApiKey || '')
+        setJevDraftApiModel(jevCfg.draftModel || '')
+      } catch (jevErr: any) {
+        console.error('加载 Jev 配置失败:', jevErr)
+      }
+      setJevCfgLoaded(true)
 
     } catch (e: any) {
       console.error('加载配置失败:', e)
@@ -3130,6 +3175,306 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     </div>
   )
 
+  const handleTestJevConnection = async () => {
+    setIsTestingJev(true)
+    setJevTestResult(null)
+    try {
+      const result = await window.electronAPI.jev.testConnection()
+      setJevTestResult(result)
+    } catch (e: any) {
+      setJevTestResult({ success: false, message: `调用失败：${e?.message || String(e)}` })
+    } finally {
+      setIsTestingJev(false)
+    }
+  }
+
+  const renderJevTab = () => (
+    <div className="tab-content">
+      <div className="form-group">
+        <label className="jev-enable-label">
+          <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={18} height={18} />
+          <span>启用 Jev 助手</span>
+        </label>
+        <span className="form-hint">
+          开启后，聊天页头部会出现「分析当前会话」按钮：读取最近对话 → 判断值不值得回、对方意图、危险等级 → 起 3 条候选回复并排序。
+          <br />
+          只读不写：<strong>绝不自动发送</strong>，候选回复需要你自己复制粘贴。
+        </span>
+        <div className="toggle-row" style={{ marginTop: 10 }}>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={jevEnabled}
+              onChange={async (e) => {
+                const val = e.target.checked
+                setJevEnabled(val)
+                await window.electronAPI.config.set('jevEnabled', val)
+                showMessage(val ? 'Jev 助手已开启' : 'Jev 助手已关闭', true)
+              }}
+            />
+            <span className="switch-slider" />
+          </label>
+          <span className="log-status">{jevEnabled ? '已开启' : '已关闭'}</span>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>关系设定</label>
+        <span className="form-hint">判断题会结合这层关系打分，比如「朋友」「恋人」「家人」「同事」「客户」。</span>
+        <input
+          type="text"
+          className="field-input"
+          value={jevRelationship}
+          placeholder="朋友"
+          onChange={(e) => {
+            const val = e.target.value
+            setJevRelationship(val)
+            scheduleConfigSave('jevRelationship', () => window.electronAPI.config.set('jevRelationship', val))
+          }}
+          style={{ width: 260 }}
+        />
+      </div>
+
+      <div className="form-group">
+        <label>上下文条数</label>
+        <span className="form-hint">取最近 N 条消息构建判断状态，群聊里发言人名会一并带上。建议 10～20。</span>
+        <input
+          type="number"
+          className="field-input"
+          value={jevContext}
+          min={2}
+          max={60}
+          step={1}
+          onChange={(e) => {
+            const parsed = parseInt(e.target.value, 10)
+            const val = Math.min(60, Math.max(2, Number.isFinite(parsed) ? parsed : 10))
+            setJevContext(val)
+            scheduleConfigSave('jevContext', () => window.electronAPI.config.set('jevContext', val))
+          }}
+          style={{ width: 260 }}
+        />
+      </div>
+
+      <div className="form-group">
+        <label>我的说话风格</label>
+        <span className="form-hint">
+          可选。用一两句话描述你平时的口吻，起草模型会照着模仿，比如「简短直接，爱用感叹号，从不说谢谢」。
+        </span>
+        <textarea
+          className="field-input"
+          value={jevStyle}
+          placeholder="留空则只按历史消息风格起草"
+          rows={2}
+          onChange={(e) => {
+            const val = e.target.value
+            setJevStyle(val)
+            scheduleConfigSave('jevStyle', () => window.electronAPI.config.set('jevStyle', val))
+          }}
+        />
+      </div>
+
+      <hr className="divider" />
+
+      <div className="form-group">
+        <label>判断接口（Jev decisions）</label>
+        <span className="form-hint">
+          TypeSafe/Jev 的 decisions 端点，不是 chat/completions。选官方或 OpenRouter 中转；端点和模型留空走所选渠道的默认值。
+        </span>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          {(['typesafe', 'openrouter'] as const).map((p) => (
+            <button
+              key={p}
+              className={`btn ${jevJudgeProvider === p ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => {
+                setJevJudgeProvider(p)
+                window.electronAPI.config.set('jevJudgeProvider', p)
+              }}
+            >
+              {p === 'typesafe' ? 'TypeSafe 官方' : 'OpenRouter 中转'}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          className="field-input"
+          value={jevJudgeEndpoint}
+          placeholder={jevJudgeProvider === 'typesafe'
+            ? 'https://api.typesafe.ai/v1/systemone'
+            : 'https://openrouter.ai/api/alpha/decisions'}
+          onChange={(e) => {
+            const val = e.target.value
+            setJevJudgeEndpoint(val)
+            scheduleConfigSave('jevJudgeEndpoint', () => window.electronAPI.config.set('jevJudgeEndpoint', val))
+          }}
+          style={{ marginTop: 8 }}
+        />
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+          <input
+            type={showJevJudgeKey ? 'text' : 'password'}
+            className="field-input"
+            value={jevJudgeApiKey}
+            placeholder={jevJudgeProvider === 'typesafe' ? 'apikey_...（TypeSafe Key）' : 'sk-or-v1-...（OpenRouter Key）'}
+            onChange={(e) => {
+              const val = e.target.value
+              setJevJudgeApiKey(val)
+              scheduleConfigSave('jevJudgeApiKey', () => window.electronAPI.config.set('jevJudgeApiKey', val))
+            }}
+            style={{ flex: 1 }}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowJevJudgeKey(!showJevJudgeKey)}
+            title={showJevJudgeKey ? '隐藏' : '显示'}
+          >
+            {showJevJudgeKey ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+          {jevJudgeApiKey && (
+            <button
+              className="btn btn-danger"
+              onClick={async () => {
+                setJevJudgeApiKey('')
+                await window.electronAPI.config.set('jevJudgeApiKey', '')
+              }}
+              title="清除 Key"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+        <input
+          type="text"
+          className="field-input"
+          value={jevJudgeModel}
+          placeholder={jevJudgeProvider === 'typesafe' ? 'jev-latest' : 'typesafe/jev-1.13'}
+          onChange={(e) => {
+            const val = e.target.value
+            setJevJudgeModel(val)
+            scheduleConfigSave('jevJudgeModel', () => window.electronAPI.config.set('jevJudgeModel', val))
+          }}
+          style={{ width: 260, marginTop: 8 }}
+        />
+      </div>
+
+      <div className="form-group">
+        <label>起草接口（OpenAI 兼容）</label>
+        <span className="form-hint">
+          用来写 3 条候选回复的模型，走标准 <code>/chat/completions</code>。填 Base URL，末尾<strong>不要加斜杠</strong>。
+        </span>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          {(['openrouter', 'deepseek'] as const).map((p) => (
+            <button
+              key={p}
+              className={`btn ${jevDraftProvider === p ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => {
+                setJevDraftProvider(p)
+                window.electronAPI.config.set('jevDraftProvider', p)
+              }}
+            >
+              {p === 'openrouter' ? 'OpenRouter' : 'DeepSeek'}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          className="field-input"
+          value={jevDraftApiBaseUrl}
+          placeholder="https://openrouter.ai/api/v1"
+          onChange={(e) => {
+            const val = e.target.value
+            setJevDraftApiBaseUrl(val)
+            scheduleConfigSave('jevDraftApiBaseUrl', () => window.electronAPI.config.set('jevDraftApiBaseUrl', val))
+          }}
+          style={{ marginTop: 8 }}
+        />
+        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+          <input
+            type={showJevDraftKey ? 'text' : 'password'}
+            className="field-input"
+            value={jevDraftApiKey}
+            placeholder="sk-...（起草接口 Key）"
+            onChange={(e) => {
+              const val = e.target.value
+              setJevDraftApiKey(val)
+              scheduleConfigSave('jevDraftApiKey', () => window.electronAPI.config.set('jevDraftApiKey', val))
+            }}
+            style={{ flex: 1 }}
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowJevDraftKey(!showJevDraftKey)}
+            title={showJevDraftKey ? '隐藏' : '显示'}
+          >
+            {showJevDraftKey ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+          {jevDraftApiKey && (
+            <button
+              className="btn btn-danger"
+              onClick={async () => {
+                setJevDraftApiKey('')
+                await window.electronAPI.config.set('jevDraftApiKey', '')
+              }}
+              title="清除 Key"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+        <input
+          type="text"
+          className="field-input"
+          value={jevDraftApiModel}
+          placeholder="deepseek/deepseek-v4.1-flash"
+          onChange={(e) => {
+            const val = e.target.value
+            setJevDraftApiModel(val)
+            scheduleConfigSave('jevDraftApiModel', () => window.electronAPI.config.set('jevDraftApiModel', val))
+          }}
+          style={{ width: 260, marginTop: 8 }}
+        />
+        <div className="toggle-row" style={{ marginTop: 10 }}>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={jevThinking}
+              onChange={async (e) => {
+                const val = e.target.checked
+                setJevThinking(val)
+                await window.electronAPI.config.set('jevThinking', val)
+              }}
+            />
+            <span className="switch-slider" />
+          </label>
+          <span className="form-hint" style={{ margin: 0 }}>允许起草模型思考（thinking/reasoning，更慢但更稳）</span>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>连接测试</label>
+        <span className="form-hint">用最小状态打一次判断接口，HTTP 不是 4xx/5xx 就算通（不含起草接口）。</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '10px' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={handleTestJevConnection}
+            disabled={isTestingJev || !jevJudgeApiKey}
+          >
+            {isTestingJev ? (
+              <><Loader2 size={14} style={{ marginRight: 4, animation: 'spin 1s linear infinite' }} />测试中...</>
+            ) : (
+              <>测试判断接口</>
+            )}
+          </button>
+          {jevTestResult && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: jevTestResult.success ? 'var(--color-success, #22c55e)' : 'var(--color-danger, #ef4444)' }}>
+              {jevTestResult.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+              {jevTestResult.message}
+            </span>
+          )}
+        </div>
+      </div>
+
+    </div>
+  )
+
   const withAsyncTimeout = async <T,>(task: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> => {
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
     try {
@@ -5557,7 +5902,7 @@ JSON 输出格式：
                 row.push(
                   <div key="ai-settings-group" className={`tab-group ${aiGroupExpanded ? 'expanded' : ''}`}>
                     <button
-                      className={`tab-btn tab-group-trigger ${(activeTab === 'aiCommon' || activeTab === 'insight' || activeTab === 'aiFootprint' || activeTab === 'aiGroupSummary' || activeTab === 'aiMessageInsight') ? 'active' : ''}`}
+                      className={`tab-btn tab-group-trigger ${(activeTab === 'aiCommon' || activeTab === 'insight' || activeTab === 'aiFootprint' || activeTab === 'aiGroupSummary' || activeTab === 'aiMessageInsight' || activeTab === 'jev') ? 'active' : ''}`}
                       onClick={() => setAiGroupExpanded((prev) => !prev)}
                       aria-expanded={aiGroupExpanded}
                     >
@@ -5601,6 +5946,7 @@ JSON 输出格式：
             {activeTab === 'aiFootprint' && renderAiFootprintTab()}
             {activeTab === 'aiGroupSummary' && renderAiGroupSummaryTab()}
             {activeTab === 'aiMessageInsight' && renderAiMessageInsightTab()}
+            {activeTab === 'jev' && renderJevTab()}
             {activeTab === 'autoDownload' && renderAutoDownloadTab()}
             {activeTab === 'updates' && renderUpdatesTab()}
             {activeTab === 'analytics' && renderAnalyticsTab()}

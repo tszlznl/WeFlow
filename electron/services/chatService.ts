@@ -109,6 +109,10 @@ export interface Message {
   cardUsername?: string     // 名片的微信ID
   cardNickname?: string     // 名片的昵称
   cardAvatarUrl?: string    // 名片头像 URL
+  // 群聊发送者展示名：enrichGroupMessages 会按「群昵称 > 备注/昵称 > wxid」填好，
+  // 消费方（如 jev 适配层）直接用，不用再自己解析一遍
+  senderDisplayName?: string
+  senderAvatarUrl?: string
   // 转账消息
   transferPayerUsername?: string   // 转账付款人
   transferReceiverUsername?: string // 转账收款人

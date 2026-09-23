@@ -3261,6 +3261,21 @@
       }
     }
 
+    .detail-jev-hint {
+      margin: 0 0 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-tertiary);
+    }
+
+    .detail-jev-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+
+      .spin { animation: spin 1s linear infinite; }
+    }
+
     .copy-btn {
       display: flex;
       align-items: center;
@@ -6189,6 +6204,21 @@
         &.active {
           background: var(--primary-light);
           color: var(--primary);
+        }
+
+        // Jev 分析按钮：稍微跳一点，提示这是个「帮你写回复」的入口
+        &.jev-analyze-btn {
+          color: var(--primary);
+
+          &:hover {
+            background: var(--primary-light);
+            color: var(--primary);
+          }
+
+          &.triggering {
+            color: var(--text-tertiary);
+            cursor: progress;
+          }
         }
       }
     }

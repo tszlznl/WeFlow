@@ -8,7 +8,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useBatchTranscribeStore, type BatchVoiceTaskType } from '../stores/batchTranscribeStore'
 import { useBatchImageDecryptStore } from '../stores/batchImageDecryptStore'
 import type { ChatRecordItem, ChatSession, Message } from '../types/models'
-import type { GroupSummaryRecord, GroupSummaryRecordSummary } from '../types/electron'
+import type { GroupSummaryRecord, GroupSummaryRecordSummary, JevAnalysisResult } from '../types/electron'
 import { renderTextWithEmoji } from '../utils/renderTextWithEmoji'
 import { displayNameOrFallback, pickDisplayName } from '../utils/displayName'
 import { VoiceTranscribeDialog } from '../components/VoiceTranscribeDialog'
@@ -16,6 +16,7 @@ import { LivePhotoIcon } from '../components/LivePhotoIcon'
 import { AnimatedStreamingText } from '../components/AnimatedStreamingText'
 import JumpToDatePopover from '../components/JumpToDatePopover'
 import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
+import { JevResultModal } from '../components/JevResultModal'
 import { type ContactSnsTimelineTarget, isSingleContactSession } from '../components/Sns/contactSnsTimeline'
 import * as configService from '../services/config'
 import BizPage, { BizAccountList, BizMessageArea, BizAccount } from './BizPage'
@@ -1412,6 +1413,19 @@ const HighlightTextNoTruncate = React.memo(({ text, keyword }: { text: string; k
   )
 })
 
+const JEV_AVATAR_URL = './assets/jev/jev-avatar.png'
+
+// 取一条消息的纯文本：与 jev 适配层 pickReadableText 同口径。渲染/主进程各自一份，
+// 不跨 tsconfig 边界互相 import；口径变了记得两边一起改（adapter 有单测兜着）
+function pickMessageText(message: Message): string | null {
+  const parsed = String(message.parsedContent || '').trim()
+  if (parsed) return parsed
+  const raw = String(message.rawContent || message.content || '').trim()
+  if (!raw) return null
+  if (raw.startsWith('<msg') || raw.startsWith('<appmsg')) return null
+  return raw
+}
+
 // 会话项组件（使用 memo 优化，避免不必要的重渲染）
 const SessionItem = React.memo(function SessionItem({
   session,
@@ -1842,6 +1856,16 @@ function ChatPage(props: ChatPageProps) {
   const [isTriggeringSessionInsight, setIsTriggeringSessionInsight] = useState(false)
   const [sessionInsightHint, setSessionInsightHint] = useState<{ success: boolean; message: string } | null>(null)
   const sessionInsightHintTimerRef = useRef<number | null>(null)
+
+  // Jev 助手：分析当前会话
+  const [jevEnabled, setJevEnabled] = useState(false)
+  const [isAnalyzingJev, setIsAnalyzingJev] = useState(false)
+  const [jevResult, setJevResult] = useState<JevAnalysisResult | null>(null)
+  const [jevError, setJevError] = useState<string | null>(null)
+  const [showJevModal, setShowJevModal] = useState(false)
+  const jevSessionRef = useRef<string | null>(null)
+  const [jevCopiedKey, setJevCopiedKey] = useState<string | null>(null)
+  const jevCopiedTimerRef = useRef<number | null>(null)
   const messageKeySetRef = useRef<Set<string>>(new Set())
   const lastMessageTimeRef = useRef(0)
   const isMessageListAtBottomRef = useRef(true)
@@ -3320,6 +3344,30 @@ function ChatPage(props: ChatPageProps) {
     }
   }, [])
 
+  // Jev 候选回复复制：写入系统剪贴板，不触碰微信输入框
+  const copyToClipboard = useCallback(async (text: string) => {
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      document.body.appendChild(textarea)
+      textarea.select()
+      try { document.execCommand('copy') } catch { /* ignore */ }
+      document.body.removeChild(textarea)
+    }
+  }, [])
+
+  // 同上，但短暂亮起「已复制」给个反馈
+  const copyToClipboardWithFeedback = useCallback(async (text: string, key: string) => {
+    if (!text) return
+    await copyToClipboard(text)
+    setJevCopiedKey(key)
+    if (jevCopiedTimerRef.current !== null) window.clearTimeout(jevCopiedTimerRef.current)
+    jevCopiedTimerRef.current = window.setTimeout(() => setJevCopiedKey(null), 1500)
+  }, [copyToClipboard])
+
   // 连接数据库
   const connect = useCallback(async () => {
     setConnecting(true)
@@ -3498,8 +3546,20 @@ function ChatPage(props: ChatPageProps) {
     }
 
     loadMessageInsightConfig()
-    const handleFocus = () => loadMessageInsightConfig()
+    // Jev 助手开关：决定头部那根魔棒按钮显隐
+    const loadJevConfig = () => {
+      window.electronAPI.config.get('jevEnabled')
+        .then((val: unknown) => { if (!canceled) setJevEnabled(val === true) })
+        .catch(() => { if (!canceled) setJevEnabled(false) })
+    }
+    loadJevConfig()
+
+    const handleFocus = () => {
+      loadMessageInsightConfig()
+      loadJevConfig()
+    }
     window.addEventListener('focus', handleFocus)
+
     return () => {
       canceled = true
       window.removeEventListener('focus', handleFocus)
@@ -3525,6 +3585,12 @@ function ChatPage(props: ChatPageProps) {
     messageInsightMemoryCache.clear()
     setSessionInsightHint(null)
     setIsTriggeringSessionInsight(false)
+    // 切会话时清掉上一轮 Jev 分析结果
+    jevSessionRef.current = currentSessionId
+    setShowJevModal(false)
+    setJevResult(null)
+    setJevError(null)
+    setIsAnalyzingJev(false)
     if (sessionInsightHintTimerRef.current !== null) {
       window.clearTimeout(sessionInsightHintTimerRef.current)
       sessionInsightHintTimerRef.current = null
@@ -6747,7 +6813,58 @@ function ChatPage(props: ChatPageProps) {
     }
   }, [currentSession, currentSessionId, isTriggeringSessionInsight, showSessionInsightHint])
 
-  const handleGroupAnalytics = useCallback(() => {
+  // Jev：取最近对话 → 判断 + 起 3 条候选 + 排序，结果只展示不发送
+  const runJevAnalysis = useCallback(async (sessionId: string, replyTo: string | null) => {
+    if (!sessionId || isAnalyzingJev) return
+
+    jevSessionRef.current = sessionId
+    setIsAnalyzingJev(true)
+    setJevResult(null)
+    setJevError(null)
+    setShowJevModal(true)
+    try {
+      const result = await window.electronAPI.jev.analyzeSession({ sessionId, replyTo })
+      if (jevSessionRef.current !== sessionId) return
+      if (result.success) {
+        setJevResult({
+          candidates: result.candidates,
+          bestIndex: result.bestIndex,
+          bestReply: result.bestReply,
+          scores: result.scores,
+          answers: result.answers,
+          usage: result.usage,
+          replyTo: result.replyTo
+        })
+      } else {
+        setJevError(result.error || '分析失败，请检查接口配置')
+      }
+    } catch (error) {
+      if (jevSessionRef.current !== sessionId) return
+      setJevError(`分析失败：${(error as Error).message || String(error)}`)
+    } finally {
+      if (jevSessionRef.current === sessionId) {
+        setIsAnalyzingJev(false)
+      }
+    }
+  }, [isAnalyzingJev])
+
+  // 头部魔棒：分析当前会话最新一轮
+  const handleAnalyzeJev = useCallback(async () => {
+    const session = currentSession
+    const sessionId = String(session?.username || currentSessionId || '').trim()
+    if (!sessionId) return
+    await runJevAnalysis(sessionId, null)
+  }, [currentSession, currentSessionId, runJevAnalysis])
+
+  // 气泡右键：以这条对方消息为回复目标分析
+  const handleAnalyzeJevMessage = useCallback(async (message: Message) => {
+    const sessionId = String(currentSessionId || '').trim()
+    if (!sessionId) return
+    const replyTo = pickMessageText(message)
+    await runJevAnalysis(sessionId, replyTo)
+  }, [currentSessionId, runJevAnalysis])
+
+const handleGroupAnalytics = useCallback(() => {
     if (!currentSessionId || !isGroupChatSession(currentSessionId)) return
     navigate('/analytics/group', {
       state: {
@@ -8126,11 +8243,14 @@ function ChatPage(props: ChatPageProps) {
                 isBatchDecrypting={isBatchDecrypting}
                 batchImageDecryptProgress={batchImageDecryptProgress}
                 isTriggeringSessionInsight={isTriggeringSessionInsight}
+                jevEnabled={jevEnabled}
+                isAnalyzingJev={isAnalyzingJev}
                 isRefreshingMessages={isRefreshingMessages}
                 isLoadingMessages={isLoadingMessages}
                 currentSessionId={currentSessionId}
                 jumpCalendarWrapRef={jumpCalendarWrapRef}
                 onTriggerSessionInsight={handleTriggerSessionInsight}
+                onAnalyzeJev={handleAnalyzeJev}
                 onToggleGroupSummaryPanel={toggleGroupSummaryPanel}
                 onGroupAnalytics={handleGroupAnalytics}
                 onToggleGroupMembersPanel={toggleGroupMembersPanel}
@@ -8650,6 +8770,27 @@ function ChatPage(props: ChatPageProps) {
                         )}
                       </div>
 
+                      {jevEnabled && (
+                        <div className="detail-section">
+                          <div className="section-title">
+                            <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={15} height={15} />
+                            <span>Jev 回复助手</span>
+                          </div>
+                          <p className="detail-jev-hint">
+                            取最近对话，判断意图与危险等级，起草 3 条候选回复。只读不发送。
+                          </p>
+                          <button
+                            className="detail-inline-btn detail-jev-btn"
+                            onClick={() => void handleAnalyzeJev()}
+                            disabled={isAnalyzingJev}
+                          >
+                            {isAnalyzingJev
+                              ? <><Loader2 size={13} className="spin" /> 分析中...</>
+                              : <><img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={14} height={14} /> 分析当前会话</>}
+                          </button>
+                        </div>
+                      )}
+
                       <div className="detail-section detail-stats-section">
                         <div className="section-title">
                           <MessageSquare size={14} />
@@ -8974,6 +9115,20 @@ function ChatPage(props: ChatPageProps) {
         </div>,
         document.body
       )}
+      {/* Jev 分析结果：3 条候选 + 判断摘要，只读不发送 */}
+      <JevResultModal
+        open={showJevModal}
+        analyzing={isAnalyzingJev}
+        result={jevResult}
+        error={jevError}
+        onCopy={copyToClipboardWithFeedback}
+        onClose={() => setShowJevModal(false)}
+        onOpenSettings={() => {
+          setShowJevModal(false)
+          navigate('/settings', { state: { initialTab: 'jev' } })
+        }}
+        copiedKey={jevCopiedKey}
+      />
       {/* 消息右键菜单 */}
       {showBatchDecryptConfirm && createPortal(
         <div className="batch-modal-overlay" onClick={() => setShowBatchDecryptConfirm(false)}>
@@ -9105,6 +9260,12 @@ function ChatPage(props: ChatPageProps) {
               <Info size={16} />
               <span>查看消息信息</span>
             </div>
+            {jevEnabled && contextMenu.message.isSend === 0 && (
+              <div className="menu-item" onClick={() => { void handleAnalyzeJevMessage(contextMenu.message) }}>
+                <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={16} height={16} />
+                <span>Jev：分析并起草回复</span>
+              </div>
+            )}
           </div>
         </>,
         document.body
