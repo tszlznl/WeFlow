@@ -11,7 +11,7 @@
  * 3. 在 packs.test 里加「题集结构合法」的用例。
  * 4. 功能开关 + SettingsPage UI。
  */
-import { JUDGE_QUESTIONS, buildRankQuestion } from './questions'
+import { JUDGE_QUESTIONS, buildRankQuestion, buildStanceQuestions } from './questions'
 
 export interface QuestionContext {
   /** 排序题要排的候选回复（replyPack 专用）。 */
@@ -41,14 +41,30 @@ const replyPack: QuestionPack = {
     const questions: Record<string, unknown> = { ...JUDGE_QUESTIONS }
     const candidates = context?.candidates || []
     if (candidates.length >= 2) {
-      Object.assign(questions, buildRankQuestion(candidates))
+      // 排序题 + 每条候选的策略标注（后者给前端展示「为什么是这条」）
+      Object.assign(questions, buildRankQuestion(candidates), buildStanceQuestions(candidates))
     }
     return questions
   }
 }
 
 export const QUESTION_PACKS: Record<string, QuestionPack> = {
-  reply: replyPack
+  reply: replyPack,
+  /**
+   * 「该回吗」题集：只问两道，不起草、不排序。
+   * 右键消息时给一个二结论徽标——「该现在回 / 先别急着回」+ 对方到底在要什么。
+   * 故意不收 danger_level：那道题贵，而且徽标场景不需要它。真要看全量判断走 reply。
+   */
+  shouldReply: {
+    id: 'shouldReply',
+    description: '右键「该回吗」：只跑两道判断，不起草，给二结论徽标',
+    buildQuestions() {
+      return {
+        should_reply_now: JUDGE_QUESTIONS.should_reply_now,
+        she_needs: JUDGE_QUESTIONS.she_needs
+      }
+    }
+  }
 }
 
 /** 取题集；不存在抛错，IPC 层好把错误透给用户。 */

@@ -2177,6 +2177,24 @@ function registerIpcHandlers() {
     })
   })
 
+  // 「该回吗」：只跑两道判断，不起草。右键消息的轻量入口，结果带缓存。
+  ipcMain.handle('jev:quickDecide', async (_, payload: {
+    sessionId: string
+    replyTo?: string | null
+    messages?: any[]
+    forceRefresh?: boolean
+  }) => {
+    if (!payload || typeof payload.sessionId !== 'string') {
+      return { success: false, error: '缺少 sessionId' }
+    }
+    return jevService.quickDecide({
+      sessionId: payload.sessionId,
+      replyTo: payload.replyTo ?? null,
+      messages: Array.isArray(payload.messages) ? payload.messages : undefined,
+      forceRefresh: payload.forceRefresh === true
+    })
+  })
+
   ipcMain.handle('social:saveWeiboCookie', async (_, rawInput: string) => {
     try {
       if (!configService) {

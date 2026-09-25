@@ -4,6 +4,36 @@
 
 ---
 
+## Phase 1：回复建议深化 — 2026-09-26（未发版，main 分支）
+
+回复建议从「给 3 条候选」升级为「给 3 条候选 + 每条为什么 + 该不该回」。全部只读，
+不自动发送。**112 项测试全过**（73 旧 + 24 packs + 15 phase1），`tsconfig.json` 全绿。
+
+### 新增
+
+- **「为什么是这条」** — `buildStanceQuestions()`（`jev/questions.ts`）给每条候选单独
+  标一道做法类型题，criteria 复用 `best_action` 的七个类型，标注口径和排序题一致；
+  和排序题同一次 decisions 调用，**不额外花钱**。`JevResultModal` 每条候选显示做法标签，
+  和全局建议做法一致时高亮，tooltip 说明这是排序依据。
+- **右键「该回吗」** — `shouldReply` 题集（只 `should_reply_now` + `she_needs` 两道，
+  故意不收贵的 `danger_level`）；`jevService.quickDecide()` + `jev:quickDecide` IPC +
+  preload + 类型。答案进 `decisionCacheService`，同一消息二次右键不花钱。
+  前端：钉在光标处的结论卡片（`ChatPage.tsx` + `ChatPage.scss`），8 秒自动消失，
+  点页面任意处或 ✕ 关闭，卸载时清计时器。
+- **共享标签层 `src/jevLabels.ts`** — true_intent / best_action / she_needs 的中文映射，
+  `JevResultModal` 与 `ChatPage` 共用。
+- `npm run test:jev:phase1` — 15 项：stance 题结构（键 / criteria / 候选数守卫）+
+  `shapeQuickVerdict` 的 noul→二结论整形（含否定态把握 = 1-v、边界 0.5、缺字段默认）。
+
+### 重构
+
+- `draft.ts` SYSTEM_PROMPT 重写为分层起草（认错 / 给方案 / 共情承认），新增 `isGroup`
+  分支（群聊只对目标说话、不 @ 别人）；`DRAFT_PROVIDERS` 显式带 `baseUrl`；
+  起草失败时 key 先脱敏再进 error。
+- `shapeQuickVerdict` 导出供单测直接打。
+
+---
+
 ## Phase 0：共享决策层 — 2026-09-23（未发版，main 分支）
 
 把 Jev 的判断能力从「回复建议专用」拆成可复用原语。这是后续消息标注 / 待办 / 日记 / Agent

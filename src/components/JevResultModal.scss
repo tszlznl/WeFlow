@@ -258,6 +258,22 @@
   font-variant-numeric: tabular-nums;
 }
 
+// 「为什么是这条」的做法类型标签
+.jev-cand-stance {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+// 和建议做法一致：高亮，说明它为什么排第一
+.jev-cand-stance-match {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  font-weight: 600;
+}
+
 .jev-cand-copy {
   margin-left: auto;
   font-size: 12px;

@@ -289,3 +289,28 @@ export function buildRankQuestion(candidates: string[]): Record<string, JevChoic
     }
   }
 }
+
+/**
+ * 给每条候选标「它属于哪种策略」。排序题只告诉我们哪条最好，不告诉我们每条是什么——
+ * 前端要展示「为什么是这条」，就得知道每条候选各自匹配什么行动类型。
+ * 和排序题同一次 decisions 调用里问，不额外花钱。
+ * criteria 复用 best_action 的七个类型，保证标注口径和排序题的「match the best action type」一致。
+ */
+export function buildStanceQuestions(candidates: string[]): Record<string, JevChoiceQuestion> {
+  if (candidates.length < 2 || candidates.length > 3) {
+    throw new Error('buildStanceQuestions expects 2 or 3 candidate replies')
+  }
+  const labels = ['a', 'b', 'c'] as const
+  const out: Record<string, JevChoiceQuestion> = {}
+  labels.slice(0, candidates.length).forEach((label, i) => {
+    out[`reply_${label}_stance`] = {
+      type: 'choice',
+      instructions:
+        `What type of action does candidate ${label} serve? ` +
+        'Judge the candidate itself, not whether it is the best one. ' +
+        'If it mixes two, pick the one it leads with.' + BACKGROUND_NOTE,
+      criteria: { ...(JUDGE_QUESTIONS.best_action.criteria as Record<string, string>) }
+    }
+  })
+  return out
+}

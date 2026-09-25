@@ -31,6 +31,25 @@
 - `engine.analyze()` 变为 `decide + 起草 + 排序` 的便捷组合，**回复建议行为不变，73 项旧测试全过**。
 - 24 项新单测（`npm run test:jev:packs`）：decide 透传 / 无 key 拒绝 / 注册表 / 缓存去重过期。
 
+### ✅ Phase 1：回复建议深化（2026-09-26）
+
+三个子功能，全部只读、不自动发送：
+
+- **分层起草** — `draft.ts` 的 SYSTEM_PROMPT 重写：候选覆盖「认错 / 给方案 / 共情承认」
+  三种姿态，保留原有反模板规则；群聊分支（不 @ 别人）。
+- **「为什么是这条」** — `buildStanceQuestions()` 给每条候选单独标一道做法类型题
+  （`reply_a_stance` / `reply_b_stance` / `reply_c_stance`），和排序题同一次 decisions
+  调用，**不额外花钱**。`JevResultModal` 每条候选显示做法标签；和全局 `best_action` 一致时
+  高亮 + tooltip 说明「这是它排第一的原因」。
+- **右键「该回吗」** — 轻量入口，只跑 `shouldReply` 题集两道题（不起草、不排序、不收
+  贵的 `danger_level`）。`jevService.quickDecide()` + `jev:quickDecide` IPC + preload；
+  结果钉在右键光标处的小卡片（建议现在就回 / 先别急着回 + 把握 + 对方需要什么），
+  8 秒自动消失，点页面任意处或 ✕ 关闭。答案进 `decisionCacheService`，同一条消息二次右键不花钱。
+- 共享标签层：`src/jevLabels.ts`（true_intent / best_action / she_needs 的中文映射），
+  `JevResultModal` 和 `ChatPage` 共用，不再各存一份。
+- 15 项新单测（`npm run test:jev:phase1`）： stance 题结构 + `shapeQuickVerdict` 的
+  noul→二结论整形（含否定态把握 = 1-v）。**112 项测试全过**（73 旧 + 24 packs + 15 phase1）。
+
 ### 📋 待办
 
 - **跑一次 background 探针**：`JEV_JUDGE_KEY=… npm run test:jev:bg-probe`。
@@ -56,7 +75,7 @@
 
 | 阶段 | 内容 | 依赖 |
 |---|---|---|
-| 1 | 回复建议深化（分层起草 + 「为什么是这条」+ 右键「该回吗」只跑 decide） | 0 ✅ |
+| 1 | 回复建议深化（分层起草 + 「为什么是这条」+ 右键「该回吗」只跑 decide） | 0 ✅ → **1 ✅** |
 | 2 | 聊天信息标注（按需扫描 + decisionCacheService 缓存徽标） | 0 ✅ |
 | 3 | 待办（todoPack + todoService + 消息反链，**先塞进 InsightInbox**） | 0, 2 |
 | 4 | 日记（diaryPack + 复用摘要器，**先出只读每日总结**） | 0, 3 |

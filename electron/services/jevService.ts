@@ -9,8 +9,10 @@
  * 内核（questions/jevClient/draft/engine）对 WeFlow 一无所知，可以单独测、单独复用。
  */
 import { chatService, type Message } from './chatService'
+import { app } from 'electron'
 import { ConfigService } from './config'
 import { analyze, type AnalysisResult } from './jev/engine'
+import { DecisionCacheStore } from './decisionCacheService'
 import type { JevMessage } from './jev/draft'
 import { DRAFT_PROVIDERS } from './jev/draft'
 import type { DraftProvider } from './jev/draft'
@@ -44,11 +46,32 @@ export interface JevConfig {
   draftModel: string
 }
 
+/**
+ * 把 shouldReply 题集的 answers 整成前端要的二结论。
+ * should_reply_now 的 noul>=0.5 = 该现在回；把握按选中结论算（否定态是 1-v）。
+ */
+export function shapeQuickVerdict(answers: Record<string, any>): {
+  verdict: 'reply' | 'wait'
+  confidence: number
+  sheNeeds: string
+} {
+  const v = typeof answers.should_reply_now?.noul === 'number' ? answers.should_reply_now.noul : 0.5
+  const verdict: 'reply' | 'wait' = v >= 0.5 ? 'reply' : 'wait'
+  const confidence = Math.round((verdict === 'reply' ? v : 1 - v) * 100)
+  const sheNeeds = String(answers.she_needs?.choice || '')
+  return { verdict, confidence, sheNeeds }
+}
+
 class JevService {
   private config: ConfigService
+  private decisionCache: DecisionCacheStore
 
   constructor(config: ConfigService) {
     this.config = config
+    const workerUserDataPath = String(process.env.WEFLOW_USER_DATA_PATH || process.env.WEFLOW_CONFIG_CWD || '').trim()
+    this.decisionCache = new DecisionCacheStore(
+      workerUserDataPath || app?.getPath?.('userData') || process.cwd()
+    )
   }
 
   /** 当前配置（每次读，改设置不用重启进程）。密钥读出来只在这一次调用里用，不缓存。 */
@@ -87,6 +110,64 @@ class JevService {
       draftApiBaseUrl: draftBaseUrl,
       draftApiKey,
       draftModel
+    }
+  }
+
+  /**
+   * 「该回吗」：只跑两道判断（shouldReply 题集），不起草、不排序。
+   * 右键消息时的轻量入口——比 analyzeSession 便宜得多（一道判断 vs 起草+判断）。
+   * 结果进 decisionCacheService，同一条消息二次展开不花钱。
+   */
+  async quickDecide(params: AnalyzeSessionParams): Promise<{
+    success: boolean
+    verdict?: 'reply' | 'wait'
+    confidence?: number
+    sheNeeds?: string
+    error?: string
+  }> {
+    const cfg = this.getConfig()
+    if (!cfg.judgeApiKey) {
+      return { success: false, error: '未填写判断接口 API Key' }
+    }
+
+    let messages = params.messages
+    if (!messages || params.forceRefresh) {
+      const result = await chatService.getMessages(params.sessionId, 0, Math.max(cfg.context, 20), 0, 0, false)
+      if (!result.success || !result.messages) {
+        return { success: false, error: result.error || '读取会话消息失败' }
+      }
+      messages = result.messages
+    }
+
+    const bubbles = messagesToBubbles(messages, params.sessionId)
+    if (bubbles.length === 0) {
+      return { success: false, error: '这个会话没有可分析的文本消息' }
+    }
+
+    // 消息指纹：对方最后一条消息的文本。变了就重算，没变就走缓存。
+    const lastHer = [...bubbles].reverse().find((m) => m.from === 'her')
+    const messageKey = lastHer ? String(lastHer.text).slice(0, 60) : '__none__'
+    const cached = this.decisionCache.get('shouldReply', params.sessionId, messageKey)
+    if (cached) {
+      return { success: true, ...shapeQuickVerdict(cached) }
+    }
+
+    try {
+      const { decide } = await import('./jev/decide')
+      const { getPack } = await import('./jev/packs')
+      const { buildState } = await import('./jev/questions')
+      const state = buildState(bubbles, cfg.relationship, cfg.context, params.replyTo || null)
+      const questions = getPack('shouldReply').buildQuestions()
+      const { answers } = await decide(state, questions, {
+        judgeProvider: cfg.judgeProvider || undefined,
+        judgeEndpoint: cfg.judgeEndpoint || undefined,
+        judgeApiKey: cfg.judgeApiKey,
+        judgeModel: cfg.judgeModel || undefined
+      })
+      this.decisionCache.set('shouldReply', params.sessionId, messageKey, answers)
+      return { success: true, ...shapeQuickVerdict(answers) }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
   }
 

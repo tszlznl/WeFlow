@@ -8,6 +8,7 @@ import {
   Settings
 } from 'lucide-react'
 import type { JevAnalysisResult } from '../types/electron'
+import { BEST_ACTION_LABELS, choiceLabel } from '../jevLabels'
 import './JevResultModal.scss'
 
 const JEV_AVATAR_URL = './assets/jev/jev-avatar.png'
@@ -32,33 +33,6 @@ const QUESTION_META: Record<string, { label: string; kind: 'noul' | 'choice' | '
   tension_resolved: { label: '紧张是否已化解', kind: 'noul' }
 }
 
-const TRUE_INTENT_LABELS: Record<string, string> = {
-  confirm_you_care: '确认你还在乎',
-  vent_anger: '发泄情绪',
-  request_action: '要求行动',
-  seek_explanation: '要个解释',
-  casual_chat: '随口闲聊',
-  close_topic: '了结话题'
-}
-
-const BEST_ACTION_LABELS: Record<string, string> = {
-  check_history: '先翻记录',
-  apologize: '道歉',
-  give_commitment: '给承诺',
-  explain: '解释',
-  acknowledge: '认可对方',
-  say_less: '少说为妙',
-  make_plan: '定个计划'
-}
-
-const SHE_NEEDS_LABELS: Record<string, string> = {
-  apology: '道歉',
-  action: '行动',
-  explanation: '解释',
-  care: '关心',
-  nothing: '什么都不用做'
-}
-
 /**
  * 把 noul 原始概率翻成「选中结论自己的把握」。
  * noul 是「命题为真」的概率：v<0.5 时选中否定态，否定态自己的把握是 1-v。
@@ -75,15 +49,6 @@ function dangerTierOf(score: number): string {
   if (!Number.isFinite(score)) return ''
   const i = Math.max(0, Math.min(9, Math.round(score)))
   return ['闲聊', '轻微打趣', '小埋怨', '明显不快', '阴阳/试探', '公开生气', '愤怒指责', '最后通牒', '已下通牒', '关系破裂'][i]
-}
-
-function choiceLabel(questionKey: string, raw: string | undefined): string {
-  if (!raw) return '—'
-  if (questionKey === 'true_intent') return TRUE_INTENT_LABELS[raw] || raw
-  if (questionKey === 'best_action') return BEST_ACTION_LABELS[raw] || raw
-  if (questionKey === 'she_needs') return SHE_NEEDS_LABELS[raw] || raw
-  if (questionKey === 'best_reply') return raw
-  return raw
 }
 
 interface JevResultModalProps {
@@ -205,6 +170,13 @@ export function JevResultModal({
                     const score = result.scores[i]
                     const key = `jev-cand-${i}`
                     const copied = copiedKey === key
+                    // 「为什么是这条」：每条候选各自被判出的做法类型（reply_a_stance / reply_b_stance / …）
+                    const stanceKey = `reply_${'abc'[i] || ''}_stance`
+                    const stanceRaw = answers[stanceKey]?.choice
+                    const stance = stanceRaw ? BEST_ACTION_LABELS[stanceRaw] || stanceRaw : ''
+                    // 全局建议做法和这条候选的做法一致时高亮：这就是排序的依据
+                    const bestAction = answers.best_action?.choice
+                    const stanceMatch = !!(stanceRaw && bestAction && stanceRaw === bestAction)
                     return (
                       <div key={key} className={`jev-cand${isBest ? ' jev-cand-best' : ''}`}>
                         <div className="jev-cand-head">
@@ -212,6 +184,18 @@ export function JevResultModal({
                             <span className="jev-cand-badge">推荐</span>
                           ) : (
                             <span className="jev-cand-idx">候选 {String.fromCharCode(65 + i)}</span>
+                          )}
+                          {stance && (
+                            <span
+                              className={`jev-cand-stance${stanceMatch ? ' jev-cand-stance-match' : ''}`}
+                              title={
+                                stanceMatch
+                                  ? '和判断给出的建议做法一致，这是它排第一的原因'
+                                  : '这条候选服务的做法类型'
+                              }
+                            >
+                              {stanceMatch ? '✓ ' : ''}{stance}
+                            </span>
                           )}
                           {typeof score === 'number' && score > 0 && (
                             <span className="jev-cand-score">排序分 {(score * 100).toFixed(0)}</span>

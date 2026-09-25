@@ -1715,6 +1715,18 @@ export interface ElectronAPI {
       messages?: any[]
       forceRefresh?: boolean
     }) => Promise<JevAnalysisResult & { success: boolean; error?: string }>
+    quickDecide: (payload: {
+      sessionId: string
+      replyTo?: string | null
+      messages?: any[]
+      forceRefresh?: boolean
+    }) => Promise<{
+      success: boolean
+      verdict?: 'reply' | 'wait'
+      confidence?: number
+      sheNeeds?: string
+      error?: string
+    }>
   }
 }
 

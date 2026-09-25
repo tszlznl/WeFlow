@@ -5705,6 +5705,90 @@
     font-weight: 500;
   }
 }
+// Jev「该回吗」结论卡片：钉在右键光标处的小卡片
+.jev-quick-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 10px 30px 10px 12px;
+  min-width: 200px;
+  max-width: 260px;
+  backdrop-filter: blur(10px);
+  animation: fadeIn 0.1s ease-out;
+  cursor: default;
+
+  .jev-quick-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .jev-quick-verdict {
+    font-weight: 600;
+  }
+
+  .jev-quick-pct {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .jev-quick-yes {
+    color: var(--success, #22c55e);
+    flex-shrink: 0;
+  }
+
+  .jev-quick-no {
+    color: var(--warning, #f59e0b);
+    flex-shrink: 0;
+  }
+
+  .jev-quick-sub {
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .jev-quick-hint {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .jev-quick-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+  }
+
+  &.jev-quick-error {
+    border-color: var(--danger, #dc3545);
+
+    .jev-quick-row svg {
+      color: var(--danger, #dc3545);
+      flex-shrink: 0;
+    }
+  }
+}
+
 // 消息信息弹窗
 .message-info-overlay {
   position: fixed;

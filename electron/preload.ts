@@ -693,6 +693,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       replyTo?: string | null
       messages?: any[]
       forceRefresh?: boolean
-    }) => ipcRenderer.invoke('jev:analyzeSession', payload)
+    }) => ipcRenderer.invoke('jev:analyzeSession', payload),
+    quickDecide: (payload: {
+      sessionId: string
+      replyTo?: string | null
+      messages?: any[]
+      forceRefresh?: boolean
+    }) => ipcRenderer.invoke('jev:quickDecide', payload)
   }
 })

@@ -17,6 +17,7 @@ import { AnimatedStreamingText } from '../components/AnimatedStreamingText'
 import JumpToDatePopover from '../components/JumpToDatePopover'
 import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
 import { JevResultModal } from '../components/JevResultModal'
+import { SHE_NEEDS_LABELS } from '../jevLabels'
 import { type ContactSnsTimelineTarget, isSingleContactSession } from '../components/Sns/contactSnsTimeline'
 import * as configService from '../services/config'
 import BizPage, { BizAccountList, BizMessageArea, BizAccount } from './BizPage'
@@ -1864,6 +1865,18 @@ function ChatPage(props: ChatPageProps) {
   const [jevError, setJevError] = useState<string | null>(null)
   const [showJevModal, setShowJevModal] = useState(false)
   const jevSessionRef = useRef<string | null>(null)
+
+  // Jev「该回吗」：右键消息时的轻量判断，只给二结论，不起草、不弹大窗
+  const [jevQuick, setJevQuick] = useState<{
+    x: number
+    y: number
+    loading: boolean
+    verdict?: 'reply' | 'wait'
+    confidence?: number
+    sheNeeds?: string
+    error?: string
+  } | null>(null)
+  const jevQuickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [jevCopiedKey, setJevCopiedKey] = useState<string | null>(null)
   const jevCopiedTimerRef = useRef<number | null>(null)
   const messageKeySetRef = useRef<Set<string>>(new Set())
@@ -6864,6 +6877,55 @@ function ChatPage(props: ChatPageProps) {
     await runJevAnalysis(sessionId, replyTo)
   }, [currentSessionId, runJevAnalysis])
 
+  // 气泡右键「该回吗」：只跑 shouldReply 两道判断，结果钉在光标处的小卡片上
+  const handleJevQuickDecide = useCallback(async (message: Message, x: number, y: number) => {
+    const sessionId = String(currentSessionId || '').trim()
+    if (!sessionId) return
+    setContextMenu(null)
+    if (jevQuickTimerRef.current) {
+      clearTimeout(jevQuickTimerRef.current)
+      jevQuickTimerRef.current = null
+    }
+    setJevQuick({ x, y, loading: true })
+    let failed = false
+    try {
+      const result = await window.electronAPI.jev.quickDecide({
+        sessionId,
+        replyTo: pickMessageText(message)
+      })
+      failed = !result.success
+      setJevQuick({
+        x,
+        y,
+        loading: false,
+        verdict: result.verdict,
+        confidence: result.confidence,
+        sheNeeds: result.sheNeeds,
+        error: result.success ? undefined : result.error
+      })
+    } catch (e) {
+      failed = true
+      setJevQuick({ x, y, loading: false, error: (e as Error).message || String(e) })
+    }
+    // 结论卡片停 8 秒自动消失，错误卡片停 12 秒
+    jevQuickTimerRef.current = setTimeout(() => setJevQuick(null), failed ? 12000 : 8000)
+  }, [currentSessionId])
+
+  // 组件卸载时清掉自动消失计时器，别在已卸载的组件上 setState
+  useEffect(() => {
+    return () => {
+      if (jevQuickTimerRef.current) clearTimeout(jevQuickTimerRef.current)
+    }
+  }, [])
+
+  // 「该回吗」卡片展开时，页面任意点击都收起（卡片自己 stopPropagation）
+  useEffect(() => {
+    if (!jevQuick) return
+    const dismiss = () => setJevQuick(null)
+    window.addEventListener('mousedown', dismiss)
+    return () => window.removeEventListener('mousedown', dismiss)
+  }, [jevQuick])
+
 const handleGroupAnalytics = useCallback(() => {
     if (!currentSessionId || !isGroupChatSession(currentSessionId)) return
     navigate('/analytics/group', {
@@ -9129,6 +9191,69 @@ const handleGroupAnalytics = useCallback(() => {
         }}
         copiedKey={jevCopiedKey}
       />
+      {/* Jev「该回吗」结论卡片：钉在右键光标处，自动消失 */}
+      {jevQuick && createPortal(
+        <div
+          className={`jev-quick-card${jevQuick.error ? ' jev-quick-error' : ''}`}
+          style={{
+            position: 'fixed',
+            left: Math.min(jevQuick.x, window.innerWidth - 240),
+            top: Math.min(jevQuick.y, window.innerHeight - 140),
+            zIndex: 12060
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {jevQuick.loading && (
+            <div className="jev-quick-row">
+              <Loader2 size={15} className="spin" />
+              <span>Jev 正在判断该不该回…</span>
+            </div>
+          )}
+          {!jevQuick.loading && jevQuick.error && (
+            <div className="jev-quick-row">
+              <AlertCircle size={15} />
+              <span>{jevQuick.error}</span>
+            </div>
+          )}
+          {!jevQuick.loading && !jevQuick.error && (
+            <>
+              <div className="jev-quick-row">
+                {jevQuick.verdict === 'reply' ? (
+                  <CheckCircle size={15} className="jev-quick-yes" />
+                ) : (
+                  <AlertCircle size={15} className="jev-quick-no" />
+                )}
+                <span className="jev-quick-verdict">
+                  {jevQuick.verdict === 'reply' ? '建议现在就回' : '先别急着回'}
+                </span>
+                {typeof jevQuick.confidence === 'number' && (
+                  <span className="jev-quick-pct">把握 {jevQuick.confidence}%</span>
+                )}
+              </div>
+              {jevQuick.sheNeeds && jevQuick.sheNeeds !== 'nothing' && (
+                <div className="jev-quick-sub">
+                  对方现在需要的是「{SHE_NEEDS_LABELS[jevQuick.sheNeeds] || jevQuick.sheNeeds}」
+                </div>
+              )}
+              <div className="jev-quick-hint">右键「分析并起草回复」可看候选</div>
+            </>
+          )}
+          <button
+            className="jev-quick-close"
+            onClick={() => {
+              if (jevQuickTimerRef.current) {
+                clearTimeout(jevQuickTimerRef.current)
+                jevQuickTimerRef.current = null
+              }
+              setJevQuick(null)
+            }}
+            aria-label="关闭"
+          >
+            <X size={12} />
+          </button>
+        </div>,
+        document.body
+      )}
       {/* 消息右键菜单 */}
       {showBatchDecryptConfirm && createPortal(
         <div className="batch-modal-overlay" onClick={() => setShowBatchDecryptConfirm(false)}>
@@ -9261,10 +9386,21 @@ const handleGroupAnalytics = useCallback(() => {
               <span>查看消息信息</span>
             </div>
             {jevEnabled && contextMenu.message.isSend === 0 && (
-              <div className="menu-item" onClick={() => { void handleAnalyzeJevMessage(contextMenu.message) }}>
-                <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={16} height={16} />
-                <span>Jev：分析并起草回复</span>
-              </div>
+              <>
+                <div className="menu-item" onClick={() => { void handleAnalyzeJevMessage(contextMenu.message) }}>
+                  <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={16} height={16} />
+                  <span>Jev：分析并起草回复</span>
+                </div>
+                <div
+                  className="menu-item"
+                  onClick={() => {
+                    void handleJevQuickDecide(contextMenu.message, contextMenu.x, contextMenu.y)
+                  }}
+                >
+                  <img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={16} height={16} />
+                  <span>Jev：该回吗</span>
+                </div>
+              </>
             )}
           </div>
         </>,
