@@ -64,6 +64,22 @@ export const QUESTION_PACKS: Record<string, QuestionPack> = {
         she_needs: JUDGE_QUESTIONS.she_needs
       }
     }
+  },
+  /**
+   * 消息标注题集：给一批对方消息逐条标「有没有潜台词 / 真实意图 / 对方需要什么」。
+   * 三道都是轻题，不收 danger_level（贵，且徽标场景用不上）。徽标直接挂在气泡上，
+   * 一眼看出哪条话里有话。按需扫描，结果进 decisionCacheService 二次不花钱。
+   */
+  annotate: {
+    id: 'annotate',
+    description: '消息标注：潜台词 / 真实意图 / 对方需要，三道轻题逐条标',
+    buildQuestions() {
+      return {
+        literal_question: JUDGE_QUESTIONS.literal_question,
+        true_intent: JUDGE_QUESTIONS.true_intent,
+        she_needs: JUDGE_QUESTIONS.she_needs
+      }
+    }
   }
 }
 

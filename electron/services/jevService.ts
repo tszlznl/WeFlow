@@ -17,6 +17,7 @@ import type { JevMessage } from './jev/draft'
 import { DRAFT_PROVIDERS } from './jev/draft'
 import type { DraftProvider } from './jev/draft'
 import { messagesToBubbles } from './jev/adapter'
+import { pickReadableText } from './jev/pickText'
 
 export type { JevChatBubble } from './jev/adapter'
 
@@ -61,6 +62,38 @@ export function shapeQuickVerdict(answers: Record<string, any>): {
   const sheNeeds = String(answers.she_needs?.choice || '')
   return { verdict, confidence, sheNeeds }
 }
+
+export interface JevAnnotation {
+  /** 有没有潜台词（literal_question 的命题是「纯字面」，<0.5 才是有潜台词） */
+  subtext: boolean
+  /** 选中结论自己的把握 */
+  subtextPct: number
+  /** 真实意图（英文 choice key，前端查表翻中文） */
+  intent?: string
+  /** 对方需要什么（英文 choice key，前端查表翻中文） */
+  needs?: string
+}
+
+/**
+ * 把 annotate 题集的 answers 整成徽标要的形状。
+ * literal_question 的 noul 是「这句话纯字面」的概率：<0.5 才是有潜台词，
+ * 否定态的把握是 1-v（和 shapeQuickVerdict 一个口径）。
+ */
+export function shapeAnnotation(answers: Record<string, any>): JevAnnotation {
+  const lit = typeof answers.literal_question?.noul === 'number' ? answers.literal_question.noul : 0.5
+  const subtext = lit < 0.5
+  return {
+    subtext,
+    subtextPct: Math.round((subtext ? 1 - lit : lit) * 100),
+    intent: answers.true_intent?.choice || undefined,
+    needs: answers.she_needs?.choice || undefined
+  }
+}
+
+/** 一次标注最多扫多少条：再多就太贵，而且通常只看最近一屏 */
+const MAX_ANNOTATE_TARGETS = 15
+/** 标注并发数：顺序跑 10 条要 ~20 秒，3 路并发 ~7 秒，又不至于撞 rate limit */
+const ANNOTATE_CONCURRENCY = 3
 
 class JevService {
   private config: ConfigService
@@ -169,6 +202,120 @@ class JevService {
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
+  }
+
+  /**
+   * 消息标注：给一批对方消息逐条跑 annotate 题集（潜台词 / 真实意图 / 对方需要），
+   * 徽标挂气泡上。targets 由前端指定（用它自己的 messageKey），后端只负责在消息流里
+   * 定位、跑判断、返答案。结果进 decisionCacheService，二次扫描不花钱。
+   */
+  async annotateSession(params: {
+    sessionId: string
+    messages?: Message[]
+    targets: Array<{ key: string; createTime: number; text: string }>
+    forceRefresh?: boolean
+  }): Promise<{
+    success: boolean
+    annotations: Record<string, JevAnnotation>
+    scanned: number
+    cached: number
+    error?: string
+  }> {
+    const cfg = this.getConfig()
+    if (!cfg.judgeApiKey) {
+      return { success: false, annotations: {}, scanned: 0, cached: 0, error: '未填写判断接口 API Key' }
+    }
+
+    let messages = params.messages
+    if (!messages || params.forceRefresh) {
+      const result = await chatService.getMessages(params.sessionId, 0, Math.max(cfg.context, 20), 0, 0, false)
+      if (!result.success || !result.messages) {
+        return { success: false, annotations: {}, scanned: 0, cached: 0, error: result.error || '读取会话消息失败' }
+      }
+      messages = result.messages
+    }
+
+    const targets = params.targets.slice(-MAX_ANNOTATE_TARGETS)
+    if (targets.length === 0) {
+      return { success: true, annotations: {}, scanned: 0, cached: 0 }
+    }
+
+    // 定位每条目标在消息流里的下标：createTime + 文本前缀双匹配，只靠时间会撞车
+    const located: Array<{ idx: number; key: string }> = []
+    for (const t of targets) {
+      const idx = messages.findIndex((m) =>
+        m.createTime === t.createTime &&
+        pickReadableText(m).slice(0, 40) === String(t.text || '').slice(0, 40))
+      if (idx >= 0) located.push({ idx, key: t.key })
+    }
+    if (located.length === 0) {
+      return {
+        success: false,
+        annotations: {},
+        scanned: 0,
+        cached: 0,
+        error: '没在消息流里定位到要标注的消息（可能已滚出当前窗口，试试加载更多）'
+      }
+    }
+
+    const { decide } = await import('./jev/decide')
+    const { getPack } = await import('./jev/packs')
+    const { buildState } = await import('./jev/questions')
+    const questions = getPack('annotate').buildQuestions()
+
+    const annotations: Record<string, JevAnnotation> = {}
+    let scanned = 0
+    let cached = 0
+    const errors: string[] = []
+
+    // 分批并发（每批 ANNOTATE_CONCURRENCY 条）：顺序跑 10 条要 ~20 秒，
+    // 3 路并发 ~7 秒，又不至于撞 rate limit。失败的条目下次扫描会重试（命中的已进缓存）。
+    for (let i = 0; i < located.length; i += ANNOTATE_CONCURRENCY) {
+      const batch = located.slice(i, i + ANNOTATE_CONCURRENCY)
+      const settled = await Promise.allSettled(batch.map(async (t) => {
+        const target = messages[t.idx]
+        const cacheKey = `${String(target.createTime)}|${pickReadableText(target).slice(0, 40)}`
+        if (!params.forceRefresh) {
+          const hit = this.decisionCache.get('annotate', params.sessionId, cacheKey)
+          if (hit) return { key: t.key, ann: shapeAnnotation(hit), fromCache: true }
+        }
+        // 用目标之前的消息当上下文，目标本身是最后一条——标注的是「这句话」
+        const state = buildState(
+          messagesToBubbles(messages.slice(0, t.idx + 1), params.sessionId),
+          cfg.relationship,
+          cfg.context,
+          null
+        )
+        const { answers } = await decide(state, questions, {
+          judgeProvider: cfg.judgeProvider || undefined,
+          judgeEndpoint: cfg.judgeEndpoint || undefined,
+          judgeApiKey: cfg.judgeApiKey,
+          judgeModel: cfg.judgeModel || undefined
+        })
+        this.decisionCache.set('annotate', params.sessionId, cacheKey, answers)
+        return { key: t.key, ann: shapeAnnotation(answers), fromCache: false }
+      }))
+      for (const r of settled) {
+        if (r.status === 'fulfilled') {
+          annotations[r.value.key] = r.value.ann
+          if (r.value.fromCache) cached++
+          else scanned++
+        } else {
+          errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason))
+        }
+      }
+    }
+
+    if (scanned + cached === 0) {
+      return {
+        success: false,
+        annotations: {},
+        scanned: 0,
+        cached: 0,
+        error: errors[0] || '标注全部失败，请检查接口配置'
+      }
+    }
+    return { success: true, annotations, scanned, cached }
   }
 
   /** 判断接口通不通：发一个最小 state 过去，只要 HTTP 不是 4xx/5xx 就算通。 */

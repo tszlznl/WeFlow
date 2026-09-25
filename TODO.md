@@ -50,6 +50,17 @@
 - 15 项新单测（`npm run test:jev:phase1`）： stance 题结构 + `shapeQuickVerdict` 的
   noul→二结论整形（含否定态把握 = 1-v）。**112 项测试全过**（73 旧 + 24 packs + 15 phase1）。
 
+### ✅ Phase 2：聊天信息标注（2026-09-26）
+
+按需扫一屏对方消息，徽标挂气泡上：
+
+- `annotate` 题集（`literal_question` + `true_intent` + `she_needs` 三道轻题，不收贵的 `danger_level`）。
+- `jevService.annotateSession()`：前端指定 targets（自带 messageKey），后端按 `createTime +
+  文本前 40 字` 双匹配定位；每条用目标之前的消息当上下文；3 路分批并发；失败条目下次自动重试。
+- 徽标 UI：会话详情面板「标注本页消息」按钮 + 气泡下 `JevAnnotationBadges`（话里有话强调色）。
+- 结果进 `decisionCacheService`，切会话清界面但缓存留主进程，二次扫描不花钱。
+- 21 项新单测（`npm run test:jev:phase2`），含真实单例 + 死端点的定位/错误聚合用例。
+
 ### 📋 待办
 
 - **跑一次 background 探针**：`JEV_JUDGE_KEY=… npm run test:jev:bg-probe`。
@@ -76,7 +87,7 @@
 | 阶段 | 内容 | 依赖 |
 |---|---|---|
 | 1 | 回复建议深化（分层起草 + 「为什么是这条」+ 右键「该回吗」只跑 decide） | 0 ✅ → **1 ✅** |
-| 2 | 聊天信息标注（按需扫描 + decisionCacheService 缓存徽标） | 0 ✅ |
+| 2 | 聊天信息标注（按需扫描 + decisionCacheService 缓存徽标） | 0 ✅ → **2 ✅** |
 | 3 | 待办（todoPack + todoService + 消息反链，**先塞进 InsightInbox**） | 0, 2 |
 | 4 | 日记（diaryPack + 复用摘要器，**先出只读每日总结**） | 0, 3 |
 | 5 | Agent（agentPack + 工具表 + 有界循环 + 确认门，**先做命令式入口**） | 0–4 |

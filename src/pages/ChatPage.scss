@@ -3276,6 +3276,11 @@
       .spin { animation: spin 1s linear infinite; }
     }
 
+    .detail-jev-annotate-hint {
+      margin-top: 6px;
+      margin-bottom: 0;
+    }
+
     .copy-btn {
       display: flex;
       align-items: center;
@@ -5705,6 +5710,41 @@
     font-weight: 500;
   }
 }
+// Jev 消息标注徽标：挂在对方文字气泡正文下面
+.jev-annotation-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+  user-select: none;
+}
+
+.jev-annotation-badge {
+  font-size: 10.5px;
+  line-height: 1.4;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+// 有潜台词：用强调色提一下，这是最值得多看一眼的信号
+.jev-annotation-subtext {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  font-weight: 600;
+}
+
+.jev-annotation-literal {
+  color: var(--text-tertiary);
+}
+
+.jev-annotation-intent,
+.jev-annotation-needs {
+  color: var(--text-secondary);
+}
+
 // Jev「该回吗」结论卡片：钉在右键光标处的小卡片
 .jev-quick-card {
   background: var(--card-bg);

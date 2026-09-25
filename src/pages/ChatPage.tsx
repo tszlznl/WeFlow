@@ -17,7 +17,8 @@ import { AnimatedStreamingText } from '../components/AnimatedStreamingText'
 import JumpToDatePopover from '../components/JumpToDatePopover'
 import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
 import { JevResultModal } from '../components/JevResultModal'
-import { SHE_NEEDS_LABELS } from '../jevLabels'
+import { SHE_NEEDS_LABELS, TRUE_INTENT_LABELS } from '../jevLabels'
+import type { JevAnnotation } from '../types/electron'
 import { type ContactSnsTimelineTarget, isSingleContactSession } from '../components/Sns/contactSnsTimeline'
 import * as configService from '../services/config'
 import BizPage, { BizAccountList, BizMessageArea, BizAccount } from './BizPage'
@@ -1877,6 +1878,13 @@ function ChatPage(props: ChatPageProps) {
     error?: string
   } | null>(null)
   const jevQuickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Jev 消息标注：按需扫描，徽标挂气泡上。结果存本地，二次进会话从缓存重建
+  const [jevAnnotations, setJevAnnotations] = useState<Record<string, JevAnnotation>>({})
+  const [isAnnotating, setIsAnnotating] = useState(false)
+  const [annotateHint, setAnnotateHint] = useState<string | null>(null)
+  /** 后端 MAX_ANNOTATE_TARGETS 的镜像，前后端各存一份避免跨进程常量同步 */
+  const MAX_ANNOTATE = 15
   const [jevCopiedKey, setJevCopiedKey] = useState<string | null>(null)
   const jevCopiedTimerRef = useRef<number | null>(null)
   const messageKeySetRef = useRef<Set<string>>(new Set())
@@ -3602,6 +3610,9 @@ function ChatPage(props: ChatPageProps) {
     jevSessionRef.current = currentSessionId
     setShowJevModal(false)
     setJevResult(null)
+    // 标注徽标也清掉（缓存仍在主进程，下次扫描命中不花钱）
+    setJevAnnotations({})
+    setAnnotateHint(null)
     setJevError(null)
     setIsAnalyzingJev(false)
     if (sessionInsightHintTimerRef.current !== null) {
@@ -6911,6 +6922,48 @@ function ChatPage(props: ChatPageProps) {
     jevQuickTimerRef.current = setTimeout(() => setJevQuick(null), failed ? 12000 : 8000)
   }, [currentSessionId])
 
+  // 聊天信息标注：扫当前窗口里最近一批对方文字消息，徽标挂气泡上
+  const handleJevAnnotate = useCallback(async (forceRefresh = false) => {
+    const sessionId = String(currentSessionId || '').trim()
+    if (!sessionId || isAnnotating) return
+
+    // 只标对方发的、有正文的文本消息；倒序取最近 MAX_ANNOTATE 条
+    const targets: Array<{ key: string; createTime: number; text: string }> = []
+    for (let i = messages.length - 1; i >= 0 && targets.length < MAX_ANNOTATE; i--) {
+      const m = messages[i]
+      if (!m || m.isSend !== 0 || m.localType !== 1) continue
+      // text 要和后端 pickReadableText 的口径一致（文本消息 parsedContent 非空，原样取）
+      const text = String(m.parsedContent || '').trim() || String(m.rawContent || m.content || '').trim()
+      if (!text) continue
+      targets.push({ key: getMessageKey(m), createTime: m.createTime, text })
+    }
+    if (targets.length === 0) {
+      setAnnotateHint('当前窗口没有可标注的对方文字消息')
+      return
+    }
+
+    setIsAnnotating(true)
+    setAnnotateHint(null)
+    try {
+      const result = await window.electronAPI.jev.annotateSession({
+        sessionId,
+        messages,
+        targets,
+        forceRefresh
+      })
+      if (result.success) {
+        setJevAnnotations((prev) => ({ ...prev, ...result.annotations }))
+        setAnnotateHint(`标注完成：新判 ${result.scanned} 条，缓存 ${result.cached} 条`)
+      } else {
+        setAnnotateHint(result.error || '标注失败，请检查接口配置')
+      }
+    } catch (e) {
+      setAnnotateHint(`标注失败：${(e as Error).message || String(e)}`)
+    } finally {
+      setIsAnnotating(false)
+    }
+  }, [currentSessionId, isAnnotating, messages])
+
   // 组件卸载时清掉自动消失计时器，别在已卸载的组件上 setState
   useEffect(() => {
     return () => {
@@ -7932,6 +7985,7 @@ const handleGroupAnalytics = useCallback(() => {
           onToggleSelection={handleToggleSelection}
           aiMessageInsightEnabled={aiMessageInsightEnabled}
           aiMessageInsightContextCount={aiMessageInsightContextCount}
+          jevAnnotation={jevAnnotations[messageKey]}
         />
       </div>
     )
@@ -7955,7 +8009,8 @@ const handleGroupAnalytics = useCallback(() => {
     selectedMessages,
     handleToggleSelection,
     aiMessageInsightEnabled,
-    aiMessageInsightContextCount
+    aiMessageInsightContextCount,
+    jevAnnotations
   ])
 
   return (
@@ -8850,6 +8905,21 @@ const handleGroupAnalytics = useCallback(() => {
                               ? <><Loader2 size={13} className="spin" /> 分析中...</>
                               : <><img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={14} height={14} /> 分析当前会话</>}
                           </button>
+                          <p className="detail-jev-hint">
+                            给最近一屏对方消息逐条标「有没有潜台词 / 真实意图」，徽标挂气泡上。已扫过的走缓存不花钱。
+                          </p>
+                          <button
+                            className="detail-inline-btn detail-jev-btn"
+                            onClick={() => void handleJevAnnotate(false)}
+                            disabled={isAnnotating}
+                          >
+                            {isAnnotating
+                              ? <><Loader2 size={13} className="spin" /> 标注中...</>
+                              : <><img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={14} height={14} /> 标注本页消息</>}
+                          </button>
+                          {annotateHint && (
+                            <p className="detail-jev-hint detail-jev-annotate-hint">{annotateHint}</p>
+                          )}
                         </div>
                       )}
 
@@ -10245,6 +10315,29 @@ function AvatarProfileCard({
   )
 }
 
+/**
+ * 消息标注徽标：挂在对方文字气泡正文下面，一眼看出哪条话里有话。
+ * 只读展示，不提供任何操作。
+ */
+function JevAnnotationBadges({ annotation }: { annotation: JevAnnotation }) {
+  const intent = annotation.intent ? TRUE_INTENT_LABELS[annotation.intent] || annotation.intent : null
+  const needs = annotation.needs && annotation.needs !== 'nothing'
+    ? SHE_NEEDS_LABELS[annotation.needs] || annotation.needs
+    : null
+  return (
+    <div className="jev-annotation-row">
+      <span
+        className={`jev-annotation-badge ${annotation.subtext ? 'jev-annotation-subtext' : 'jev-annotation-literal'}`}
+        title={annotation.subtext ? '判断：这句话有潜台词' : '判断：这句话是字面意思'}
+      >
+        {annotation.subtext ? '话里有话' : '字面意思'} {annotation.subtextPct}%
+      </span>
+      {intent && <span className="jev-annotation-badge jev-annotation-intent">意图：{intent}</span>}
+      {needs && <span className="jev-annotation-badge jev-annotation-needs">需要：{needs}</span>}
+    </div>
+  )
+}
+
 function MessageBubble({
   message,
   messageKey,
@@ -10265,7 +10358,8 @@ function MessageBubble({
   isSelected,
   onToggleSelection,
   aiMessageInsightEnabled,
-  aiMessageInsightContextCount
+  aiMessageInsightContextCount,
+  jevAnnotation
 }: {
   message: Message;
   messageKey: string;
@@ -10287,6 +10381,8 @@ function MessageBubble({
   onToggleSelection?: (messageKey: string, isShiftKey?: boolean) => void;
   aiMessageInsightEnabled?: boolean;
   aiMessageInsightContextCount?: number;
+  /** Jev 消息标注的徽标（有才传）；挂在这条气泡正文下面 */
+  jevAnnotation?: JevAnnotation;
 }) {
   const isSystem = isSystemMessage(message.localType)
   const isEmoji = message.localType === 47
@@ -12861,7 +12957,12 @@ function MessageBubble({
     }
 
     // 普通消息
-    return <div className="bubble-content">{renderTextWithEmoji(cleanedParsedContent)}</div>
+    return (
+      <div className="bubble-content">
+        {renderTextWithEmoji(cleanedParsedContent)}
+        {jevAnnotation && <JevAnnotationBadges annotation={jevAnnotation} />}
+      </div>
+    )
   }
 
   const systemAlertPortal = systemAlert ? createPortal(
@@ -12942,6 +13043,8 @@ const MemoMessageBubble = React.memo(MessageBubble, (prevProps, nextProps) => {
   if (prevProps.onToggleSelection !== nextProps.onToggleSelection) return false
   if (prevProps.aiMessageInsightEnabled !== nextProps.aiMessageInsightEnabled) return false
   if (prevProps.aiMessageInsightContextCount !== nextProps.aiMessageInsightContextCount) return false
+  // 标注徽标变了得重渲染，否则扫完不出现
+  if (prevProps.jevAnnotation !== nextProps.jevAnnotation) return false
 
   return (
     prevProps.session.username === nextProps.session.username &&

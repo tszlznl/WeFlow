@@ -1727,7 +1727,27 @@ export interface ElectronAPI {
       sheNeeds?: string
       error?: string
     }>
+    annotateSession: (payload: {
+      sessionId: string
+      messages?: any[]
+      targets: Array<{ key: string; createTime: number; text: string }>
+      forceRefresh?: boolean
+    }) => Promise<{
+      success: boolean
+      annotations: Record<string, JevAnnotation>
+      scanned: number
+      cached: number
+      error?: string
+    }>
   }
+}
+
+/** 消息标注徽标：一条对方消息的判断结论（英文 choice key 由前端查表翻中文） */
+export interface JevAnnotation {
+  subtext: boolean
+  subtextPct: number
+  intent?: string
+  needs?: string
 }
 
 export interface JevConfig {

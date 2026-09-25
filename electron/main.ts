@@ -2195,6 +2195,27 @@ function registerIpcHandlers() {
     })
   })
 
+  // 消息标注：给一批对方消息逐条跑三道轻判断，徽标挂气泡上。按需扫描，结果带缓存。
+  ipcMain.handle('jev:annotateSession', async (_, payload: {
+    sessionId: string
+    messages?: any[]
+    targets: Array<{ key: string; createTime: number; text: string }>
+    forceRefresh?: boolean
+  }) => {
+    if (!payload || typeof payload.sessionId !== 'string') {
+      return { success: false, error: '缺少 sessionId', annotations: {}, scanned: 0, cached: 0 }
+    }
+    if (!Array.isArray(payload.targets)) {
+      return { success: false, error: '缺少 targets', annotations: {}, scanned: 0, cached: 0 }
+    }
+    return jevService.annotateSession({
+      sessionId: payload.sessionId,
+      messages: Array.isArray(payload.messages) ? payload.messages : undefined,
+      targets: payload.targets,
+      forceRefresh: payload.forceRefresh === true
+    })
+  })
+
   ipcMain.handle('social:saveWeiboCookie', async (_, rawInput: string) => {
     try {
       if (!configService) {

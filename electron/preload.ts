@@ -699,6 +699,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       replyTo?: string | null
       messages?: any[]
       forceRefresh?: boolean
-    }) => ipcRenderer.invoke('jev:quickDecide', payload)
+    }) => ipcRenderer.invoke('jev:quickDecide', payload),
+    annotateSession: (payload: {
+      sessionId: string
+      messages?: any[]
+      targets: Array<{ key: string; createTime: number; text: string }>
+      forceRefresh?: boolean
+    }) => ipcRenderer.invoke('jev:annotateSession', payload)
   }
 })

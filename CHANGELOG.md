@@ -4,6 +4,31 @@
 
 ---
 
+## Phase 2：聊天信息标注 — 2026-09-26（未发版，main 分支）
+
+按需扫一屏对方消息，给每条标「话里有话 / 字面意思 + 真实意图 + 对方需要」，徽标挂气泡上。
+判断的是结构化结论，和已有的 `MessageInsightControl`（生成式解析）是两路数据。
+**133 项测试全过**（73 + 24 + 15 + 21）。
+
+### 新增
+
+- **`annotate` 题集**（`jev/packs.ts`）— 只收 `literal_question` + `true_intent` +
+  `she_needs` 三道轻题；故意不收 `danger_level`（贵，徽标场景用不上）。
+- **`jevService.annotateSession()`** — 前端指定 targets（自带 messageKey），后端在消息流里
+  按 `createTime + 文本前 40 字` 双匹配定位（只靠时间戳会撞车）。每条用目标之前的消息当
+  上下文、目标本身是最后一条。3 路分批并发（顺序跑 10 条 ~20 秒，并发 ~7 秒，又不撞
+  rate limit），失败条目下次扫描自动重试（命中的已进缓存）。上限 15 条/次。
+- **共享 `shapeAnnotation()`** — answers → 徽标；`literal_question` 的命题是「纯字面」，
+  <0.5 才是有潜台词，否定态把握 = 1-v（和 `shapeQuickVerdict` 一个口径）。
+- **IPC `jev:annotateSession`** + preload + `JevAnnotation` 类型。
+- 前端：会话详情面板加「标注本页消息」按钮（带进度/结果提示）；气泡正文下挂徽标
+  （`JevAnnotationBadges`，话里有话用强调色提一下）；切会话清徽标（缓存在主进程，二次
+  扫描命中不花钱）；`jevAnnotations` 进 `renderMessageListItem` 依赖和气泡 memo 比较。
+- `npm run test:jev:phase2` — 21 项：题集结构 / shapeAnnotation 边界 / 缓存键隔离 /
+  annotateSession 真实单例（judge 端点指向 127.0.0.1:1，连接被拒立刻失败不重试，全程不联网）。
+
+---
+
 ## Phase 1：回复建议深化 — 2026-09-26（未发版，main 分支）
 
 回复建议从「给 3 条候选」升级为「给 3 条候选 + 每条为什么 + 该不该回」。全部只读，
