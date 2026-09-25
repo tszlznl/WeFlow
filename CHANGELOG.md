@@ -4,6 +4,49 @@
 
 ---
 
+## Phase 0：共享决策层 — 2026-09-23（未发版，main 分支）
+
+把 Jev 的判断能力从「回复建议专用」拆成可复用原语。这是后续消息标注 / 待办 / 日记 / Agent
+功能的共同前置。**回复建议行为完全不变，73 项旧测试全过。**
+
+### 新增
+
+- **`electron/services/jev/decide.ts`** — 纯决策函数：`(state, questions, config) → {answers, usage}`。
+  不起草、不排序、无状态、无缓存；`askFn` 桩注入可不联网测；无 key 时拒绝请求。
+- **`electron/services/jev/packs.ts`** — `QUESTION_PACKS` 题集注册表。现有 7 道判断题 +
+  候选排序题收录为 `reply`。加新功能 = 注册一个题集。
+- **`electron/services/decisionCacheService.ts`** — 决策缓存，按 `(pack, session, messageKey)`
+  去重，默认 7 天过期，`clearSession` / `clear`，照 `cacheMapStore` 的内存 Map + 防抖落盘范式。
+  decisions 按调用收费，高频读场景靠它不重复花钱。
+- **`jev/__tests__/jev.bg-probe.ts`** — 一次性探针：验证 decisions 端点是否真的读
+  `state.background`（key 只进环境）。**在背景注入接数据之前必须跑一次。**
+
+### 重构
+
+- `engine.analyze()` 从「自己组装题集 + 调 ask」改为 `decide(replyPack) + 起草 + 排序` 的
+  便捷组合；题集组装移到 `packs.ts`。外部调用方（jevService）无变化。
+
+### 测试
+
+- 新增 `npm run test:jev:packs`（24 项，不联网）：decide 透传 / 无 key 拒绝 / 注册表题集结构 /
+  缓存去重与过期。新增 `npm run test:jev:bg-probe` 脚本。
+- 两个 tsconfig 类型检查全绿；73 项旧测试全过。
+
+### 事实更正
+
+- `background` 字段**不是移植缺口**：核实两个 Python 版的 `build_state()` 都没接过它，
+  jarvis 里只有一个探针脚本在测端点能否容忍。这是从未落地的设计意图，已降级为
+  「先跑探针验证再接数据」，详见 `docs/ARCHITECTURE.md` 5.3 节。
+
+### 文档 (docs)
+
+- `docs/ARCHITECTURE.md` 第 5 节重写：拆成 5.1 共享决策层 / 5.2 回复建议 / 5.3 background 探针 /
+  5.4 密钥与边界。
+- `docs/DEVELOPMENT.md` 补 `test:jev:packs` 和 `test:jev:bg-probe` 两个脚本说明。
+- `TODO.md` 记录 Phase 0 完成状态、探针待跑、后续阶段排期（待办/日记先轻量、Agent 先命令式）。
+
+---
+
 ## 5.0.1 — 2026-09-23
 
 ### Jev 判断助手（新增）

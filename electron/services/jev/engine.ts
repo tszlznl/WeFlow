@@ -3,8 +3,10 @@
  * 从 jev-chat-windows/core/engine.py 移植。平台无关，IPC handler / UI / 命令行都只调 analyze()。
  */
 import { draftCandidates, type JevMessage, type DraftProvider } from './draft'
-import { ask, resolveJudgeEndpoint, DEFAULT_DECISIONS_URL, DEFAULT_JUDGE_MODEL, type JudgeProvider } from './jevClient'
-import { JUDGE_QUESTIONS, buildState, buildRankQuestion } from './questions'
+import { ask, type JudgeProvider } from './jevClient'
+import { buildState } from './questions'
+import { decide } from './decide'
+import { getPack } from './packs'
 
 const REPLY_IDX: Record<string, number> = { reply_a: 0, reply_b: 1, reply_c: 2 }
 
@@ -78,24 +80,18 @@ export async function analyze(
     thinking: options.thinking
   })
 
-  const questions: Record<string, unknown> = { ...JUDGE_QUESTIONS }
-  if (candidates.length >= 2) {
-    Object.assign(questions, buildRankQuestion(candidates))
-  }
+  // 判断走共享决策原语：题集从注册表取（replyPack = 7 道判断题 + 候选排序题）。
+  // 盲起草的边界在这里体现：candidates 只进判断的排序题，不进上面的起草 prompt。
   const state = buildState(messages, relationship, context, options.replyTo)
+  const questions = getPack('reply').buildQuestions({ candidates })
 
-  const judge = resolveJudgeEndpoint({
-    provider: options.judgeProvider,
-    endpoint: options.judgeEndpoint,
-    model: options.judgeModel
+  const { answers, usage } = await decide(state, questions, {
+    judgeProvider: options.judgeProvider,
+    judgeEndpoint: options.judgeEndpoint,
+    judgeApiKey: options.judgeApiKey,
+    judgeModel: options.judgeModel,
+    askFn: options.askFn
   })
-  const result = await (options.askFn ?? ask)(state, questions, {
-    endpoint: judge.endpoint,
-    apiKey: options.judgeApiKey,
-    model: judge.model
-  })
-
-  const answers = (result.answers || {}) as Record<string, any>
   const bestReply = answers.best_reply || {}
   const bestKey = bestReply.choice
   let bestIndex = REPLY_IDX[String(bestKey)] ?? 0
@@ -115,7 +111,7 @@ export async function analyze(
     bestReply: candidates[bestIndex] || '',
     scores,
     answers,
-    usage: (result.usage || {}) as Record<string, unknown>,
+    usage,
     replyTo: options.replyTo
   }
 }

@@ -47,17 +47,21 @@ npx tsc --project tsconfig.node.json --noEmit   # 主进程
 
 ```bash
 npm run test:jev          # 单测，纯逻辑，不联网（当前 73 项）
+npm run test:jev:packs    # Phase 0：decide 原语 + 题集注册表 + 决策缓存（24 项，不联网）
 npm run test:jev:e2e      # 端到端，会真实调 API（需要 key）
 npm run test:jev:ablation # 消融实验，30 用例 × 12 变体（很贵，按需）
+npm run test:jev:bg-probe # 探针：端点是否读 state.background（需要 JEV_JUDGE_KEY）
 ```
 
 三者的机制相同：用 esbuild 把测试文件 bundle 成 CJS（`--alias:electron=…/electron-stub.js`
 桩掉 electron 依赖），输出到 `node_modules/.cache/`，再 `node` 执行。
 
-- **`test:jev` 不需要任何 key，随便跑。** 用例逐条对照 Python 原版 `draft.py` / `questions.py`
-  的 `__main__` 自测行为。
-- **`test:jev:e2e` 和 `test:jev:ablation` 需要 `JEV_JUDGE_KEY` 环境变量**，key 只进环境、
-  不落文件。
+- **`test:jev` / `test:jev:packs` 不需要任何 key，随便跑。**
+- **`test:jev:e2e` / `test:jev:ablation` / `test:jev:bg-probe` 需要 `JEV_JUDGE_KEY` 环境变量**，
+  key 只进环境、不落文件。
+- `test:jev:bg-probe` 是**一次性探针**：判断 decisions 端点是否真的读 `state.background`
+  字段（详见 `docs/ARCHITECTURE.md` 的 Jev 章节）。在背景注入接上数据之前必须跑一次，
+  结论写进 `TODO.md`。
 - 消融实验产物默认写 `.ablation/`（含完整调用记录，已 gitignore，不进仓库）。
 
 ## 4. 打包发布

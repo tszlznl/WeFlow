@@ -278,7 +278,7 @@ async function runEngineWithReplyTo(replyTo: string | null): Promise<engine.Anal
       // 起草桩：固定 3 条候选，不联网
       draftFn: async () => ['甲', '乙', '丙'],
       // 判断桩：记下入参，回一个 best_reply 指向乙
-      askFn: (state, questions): Promise<Record<string, any>> => {
+      askFn: (state: unknown, questions: unknown): Promise<Record<string, any>> => {
         engineState = state
         engineQuestions = questions as Record<string, unknown>
         return Promise.resolve({

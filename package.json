@@ -20,6 +20,8 @@
     "test:jev": "esbuild electron/services/jev/__tests__/jev.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-test.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-test.cjs",
     "test:jev:e2e": "esbuild electron/services/jev/__tests__/jev.e2e.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-e2e.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-e2e.cjs",
     "test:jev:ablation": "esbuild electron/services/jev/__tests__/jev.ablation.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-ablation.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-ablation.cjs",
+    "test:jev:packs": "esbuild electron/services/jev/__tests__/jev.packs.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-packs.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-packs.cjs",
+    "test:jev:bg-probe": "esbuild electron/services/jev/__tests__/jev.bg-probe.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-bg-probe.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-bg-probe.cjs",
     "build": "node scripts/clean-dist-electron.cjs && tsc && vite build && electron-builder",
     "preview": "vite preview",
     "electron:dev": "node scripts/prepare-electron-runtime.cjs && vite --mode electron",

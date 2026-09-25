@@ -100,7 +100,8 @@ release/                      electron-builder 产物（已 gitignore）
   contacts/utils 子模块）、`exportTaskControlService.ts`、`exportRecordService.ts`、
   `exportCardDiagnosticsService.ts`、`contactExportService.ts`
 - **AI**：`insightService.ts`、`insightProfileService.ts`、`insightRecordService.ts`、
-  `jevService.ts` + `jev/`（见第 5 节）、`groupSummaryService.ts` / `groupSummaryRecordService.ts`
+  `jevService.ts` + `jev/`（见第 5 节）、`decisionCacheService.ts`（决策缓存，见 5.1）、
+  `groupSummaryService.ts` / `groupSummaryRecordService.ts`
 - **推送/通知/网络**：`messagePushService.ts`、`httpService.ts`（本地 HTTP API 服务端）、
   `systemNotificationService.ts`、`cloudControlService.ts`、`weliveBridge.ts`
 - **其他**：`backupService.ts`、`windowsHelloService.ts`、`social/weiboService.ts`、
@@ -149,28 +150,73 @@ preload 暴露的顶层命名空间（`window.electronAPI.*`，34 个）：`conf
 
 ## 5. Jev 判断助手链路
 
-本仓库新增的独立链路，内核对 WeFlow 零依赖，可单独测试：
+本仓库新增的独立链路，内核对 WeFlow 零依赖，可单独测试。
+
+### 5.1 共享决策层（Phase 0，判断能力从回复建议里拆出来的原语）
+
+判断能力不再只服务回复建议一个出口。拆成可复用的一层：
+
+```
+                    ┌─────────────────┐
+  各功能 ──题集id──▶│ packs.ts        │  QUESTION_PACKS 注册表
+                    │ getPack(id)     │  每个功能有自己的题集
+                    └────────┬────────┘
+                             │  questions
+                    ┌────────▼────────┐
+                    │ decide.ts       │  纯决策：(state, questions, config) → answers
+                    │                 │  不起草、不排序、不挑候选
+                    └────────┬────────┘
+                             │  askFn 桩注入（不联网可测）
+                    ┌────────▼────────┐
+                    │ jevClient.ask   │  decisions 调用，退避重试，key 脱敏
+                    └─────────────────┘
+```
+
+- **`decide.ts`** — 纯决策函数。输入 state + 题集，输出 `{answers, usage}`。无状态、无缓存、
+  不起草。消息标注 / 待办 / 日记 / Agent 路由都是它的调用方。**盲起草的边界在这里：
+  decide 的输出不得喂回任何 chat/completions 调用。**
+- **`packs.ts`** — `QUESTION_PACKS` 注册表。现有 7 道判断题 + 候选排序题收录为 `reply`。
+  加新题集 = 注册一个 `{id, description, buildQuestions}`。
+- **`decisionCacheService.ts`** — 按 `(pack, session, messageKey)` 缓存 answers，
+  默认 7 天过期，`cacheMapStore` 的内存 Map + 防抖落盘范式。decisions 按调用收费，
+  高频读场景（消息徽标反复渲染）全靠它不重复花钱。
+
+### 5.2 回复建议（现有功能，行为不变）
 
 ```
 ChatPage 右键对方消息 / 聊天页头部「分析当前会话」
   → IPC jev:analyzeSession（jevService.analyzeSession）
     → chatService.getMessages 取最近 N 条
       → adapter.messagesToBubbles 适配成 {from:'her'|'me', text, name?}
-        → engine.analyze
+        → engine.analyze  = decide(replyPack) + 起草 + 排序
             ├─ draft.draftCandidates  盲起草 3 条（chat/completions，OpenAI 兼容）
             │     └─ sanitize：去重 / 鹦鹉学舌过滤 / 注入防护（norm 用 \p{P}\p{S} 不用 \W）
-            ├─ questions.buildState   构造判断用的 state（关系、消息、is_group、reply_to）
-            ├─ questions.JUDGE_QUESTIONS + buildRankQuestion（7 道判断题 + 1 道排序题）
-            └─ jevClient.ask          一次 decisions 调用拿回全部答案 + 各候选胜出概率
+            ├─ questions.buildState   构造判断用的 state
+            ├─ packs.getPack('reply') 取题集（7 道判断题，候选 >=2 加排序题）
+            └─ decide                一次调用拿回全部答案 + 各候选胜出概率
   → IPC 回渲染层 → JevResultModal 展示
 ```
 
-**盲起草的关键**：`draft.draftCandidates` 的输入只有对话原文、关系设定、用户口吻样本，
-**7 道题的判断结果不进起草 prompt**。排序在起草之后，由 Jev 的第 8 题（`best_reply`）完成。
+`engine.analyze()` 保留为 `decide + 起草 + 排序` 的便捷组合，回复建议继续调它，行为不变。
 
-**两个 provider**：TypeSafe 官方 `https://api.typesafe.ai/v1/systemone`（模型 `jev-latest`），
-或 OpenRouter 中转 `https://openrouter.ai/api/v1/../decisions`（模型 `typesafe/jev-1.13`）。
-由 `resolveJudgeEndpoint` 按 provider 或用户填的 endpoint 解析。
+### 5.3 background 字段（设计意图，未落地——接数据前必须跑探针）
+
+jarvis 的 D 阶段设计里，state 应带一个顶层 `background`（联系人备注 + 知识库命中），
+`questions.ts` 的 `BACKGROUND_NOTE` 提示语也是为此提前写的。但**两个 Python 版的
+`build_state()` 都没接过这个字段**，它从未实现——只有一个探针脚本在测「端点能否容忍它」。
+
+**所以这不是移植缺口，是未验证的新功能。** 接数据前必须先跑：
+
+```bash
+$env:JEV_JUDGE_KEY = "<key>"   # 只进环境
+npm run test:jev:bg-probe
+```
+
+探针的三种结论：`ACCEPTED AND READ`（概率变了 → 可以按计划接）/
+`ACCEPTED BUT IGNORED`（概率没变 → 字段没到模型，得折进 `chat.relationship` 之类的已有字段）/
+`REJECTED`（400/422 → 不能加顶层字段）。**结论写进 `TODO.md` 再决定接法。**
+
+### 5.4 密钥与边界
 
 **密钥处理**：判断和起草的 key 都从 ConfigService 的加密配置项读，只在调用期间存在；
 所有进日志/异常的文本过 `jevClient.redactKey`（显式 key 替换 + `sk-`/`apikey_` 格式正则兜底）。
