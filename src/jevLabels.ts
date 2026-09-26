@@ -32,6 +32,16 @@ export const SHE_NEEDS_LABELS: Record<string, string> = {
   nothing: '什么都不用做'
 }
 
+/** 待办类型：key 对齐 electron/services/jev/todoQuestions.ts 的 criteria。 */
+export const TODO_KIND_LABELS: Record<string, string> = {
+  meeting: '约见/会议',
+  work: '工作交办',
+  promise: '承诺跟进',
+  reminder: '提醒',
+  help: '求助',
+  other: '其他'
+}
+
 /** 把英文 choice key 翻成中文，找不到就原样返回。 */
 export function choiceLabel(questionKey: string, raw: string | undefined): string {
   if (!raw) return '—'

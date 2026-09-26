@@ -1883,6 +1883,9 @@ function ChatPage(props: ChatPageProps) {
   const [jevAnnotations, setJevAnnotations] = useState<Record<string, JevAnnotation>>({})
   const [isAnnotating, setIsAnnotating] = useState(false)
   const [annotateHint, setAnnotateHint] = useState<string | null>(null)
+  // Jev 待办：扫出来塞进 InsightInbox，轻量版不建独立 UI
+  const [isScanningTodos, setIsScanningTodos] = useState(false)
+  const [todoHint, setTodoHint] = useState<string | null>(null)
   /** 后端 MAX_ANNOTATE_TARGETS 的镜像，前后端各存一份避免跨进程常量同步 */
   const MAX_ANNOTATE = 15
   const [jevCopiedKey, setJevCopiedKey] = useState<string | null>(null)
@@ -3613,6 +3616,7 @@ function ChatPage(props: ChatPageProps) {
     // 标注徽标也清掉（缓存仍在主进程，下次扫描命中不花钱）
     setJevAnnotations({})
     setAnnotateHint(null)
+    setTodoHint(null)
     setJevError(null)
     setIsAnalyzingJev(false)
     if (sessionInsightHintTimerRef.current !== null) {
@@ -6964,6 +6968,49 @@ function ChatPage(props: ChatPageProps) {
     }
   }, [currentSessionId, isAnnotating, messages])
 
+  // 待办提取：和标注同一批 targets，但跑 todo 题集，命中的塞进 InsightInbox
+  const handleJevScanTodos = useCallback(async (forceRefresh = false) => {
+    const sessionId = String(currentSessionId || '').trim()
+    if (!sessionId || isScanningTodos) return
+
+    const targets: Array<{ key: string; createTime: number; text: string }> = []
+    for (let i = messages.length - 1; i >= 0 && targets.length < MAX_ANNOTATE; i--) {
+      const m = messages[i]
+      if (!m || m.isSend !== 0 || m.localType !== 1) continue
+      const text = String(m.parsedContent || '').trim() || String(m.rawContent || m.content || '').trim()
+      if (!text) continue
+      targets.push({ key: getMessageKey(m), createTime: m.createTime, text })
+    }
+    if (targets.length === 0) {
+      setTodoHint('当前窗口没有可扫描的对方文字消息')
+      return
+    }
+
+    setIsScanningTodos(true)
+    setTodoHint(null)
+    try {
+      const result = await window.electronAPI.jev.scanTodos({
+        sessionId,
+        messages,
+        targets,
+        displayName: currentSession?.displayName,
+        avatarUrl: currentSession?.avatarUrl,
+        forceRefresh
+      })
+      if (result.success) {
+        const parts = [`新增 ${result.added} 条待办`]
+        if (result.skipped) parts.push(`已存在 ${result.skipped} 条`)
+        setTodoHint(parts.join('，') + (result.error ? `（${result.error}）` : '，在收件箱里看'))
+      } else {
+        setTodoHint(result.error || '提取失败，请检查接口配置')
+      }
+    } catch (e) {
+      setTodoHint(`提取失败：${(e as Error).message || String(e)}`)
+    } finally {
+      setIsScanningTodos(false)
+    }
+  }, [currentSessionId, isScanningTodos, messages, currentSession])
+
   // 组件卸载时清掉自动消失计时器，别在已卸载的组件上 setState
   useEffect(() => {
     return () => {
@@ -8919,6 +8966,21 @@ const handleGroupAnalytics = useCallback(() => {
                           </button>
                           {annotateHint && (
                             <p className="detail-jev-hint detail-jev-annotate-hint">{annotateHint}</p>
+                          )}
+                          <p className="detail-jev-hint">
+                            从最近一屏消息里捞出「要我做的事」，塞进收件箱，点击可跳回源消息。算过的走缓存不花钱。
+                          </p>
+                          <button
+                            className="detail-inline-btn detail-jev-btn"
+                            onClick={() => void handleJevScanTodos(false)}
+                            disabled={isScanningTodos}
+                          >
+                            {isScanningTodos
+                              ? <><Loader2 size={13} className="spin" /> 提取中...</>
+                              : <><img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={14} height={14} /> 提取待办</>}
+                          </button>
+                          {todoHint && (
+                            <p className="detail-jev-hint detail-jev-annotate-hint">{todoHint}</p>
                           )}
                         </div>
                       )}

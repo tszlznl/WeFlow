@@ -22,7 +22,7 @@ export interface SocialSaveWeiboCookieResult {
 }
 
 export type InsightRecordTriggerReason = 'activity' | 'silence' | 'test' | 'manual' | 'message_analysis'
-export type InsightRecordSourceType = 'insight' | 'message_analysis'
+export type InsightRecordSourceType = 'insight' | 'message_analysis' | 'jev_todo'
 
 export interface MessageInsightAnalysis {
   explicitText: string
@@ -1737,6 +1737,20 @@ export interface ElectronAPI {
       annotations: Record<string, JevAnnotation>
       scanned: number
       cached: number
+      error?: string
+    }>
+    scanTodos: (payload: {
+      sessionId: string
+      messages?: any[]
+      targets: Array<{ key: string; createTime: number; text: string }>
+      displayName?: string
+      avatarUrl?: string
+      forceRefresh?: boolean
+    }) => Promise<{
+      success: boolean
+      added: number
+      skipped: number
+      scanned: number
       error?: string
     }>
   }

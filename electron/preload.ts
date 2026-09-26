@@ -705,6 +705,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       messages?: any[]
       targets: Array<{ key: string; createTime: number; text: string }>
       forceRefresh?: boolean
-    }) => ipcRenderer.invoke('jev:annotateSession', payload)
+    }) => ipcRenderer.invoke('jev:annotateSession', payload),
+    scanTodos: (payload: {
+      sessionId: string
+      messages?: any[]
+      targets: Array<{ key: string; createTime: number; text: string }>
+      displayName?: string
+      avatarUrl?: string
+      forceRefresh?: boolean
+    }) => ipcRenderer.invoke('jev:scanTodos', payload)
   }
 })

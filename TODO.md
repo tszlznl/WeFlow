@@ -61,6 +61,19 @@
 - 结果进 `decisionCacheService`，切会话清界面但缓存留主进程，二次扫描不花钱。
 - 21 项新单测（`npm run test:jev:phase2`），含真实单例 + 死端点的定位/错误聚合用例。
 
+### ✅ Phase 3：待办提取（2026-09-26）
+
+轻量版不建独立 UI，待办直接进 InsightInbox：
+
+- `todo` 题集（`jev/todoQuestions.ts`）：`todo_present` 闸门 + `todo_when` 截止 + `todo_kind` 六类。
+  Jev 无生成题，待办文本 = 源消息本身。
+- `jevService.scanTodos()`：复用 annotate 的定位/批量管线（抽出 `loadMessages` / `locateTargets` /
+  `runDecideBatch`）。闸门达标且未入库的写 `insightRecordService`（`sourceType: 'jev_todo'`），
+  带消息反链（messageKey/localId/createTime），点击卡片跳源消息。forceRefresh 先清后建。
+- **5 小时时间窗**：与最新消息间隔超过 5 小时的消息不喂给判断（createTime 是 Unix 秒）。
+- InsightInbox 加「Jev 待办」筛选 tab + 卡片；ChatPage 详情面板加「提取待办」按钮。
+- 29 项新单测（`npm run test:jev:phase3`），用本地 mock 判断服务器，全程不联网。
+
 ### 📋 待办
 
 - **跑一次 background 探针**：`JEV_JUDGE_KEY=… npm run test:jev:bg-probe`。
@@ -88,7 +101,7 @@
 |---|---|---|
 | 1 | 回复建议深化（分层起草 + 「为什么是这条」+ 右键「该回吗」只跑 decide） | 0 ✅ → **1 ✅** |
 | 2 | 聊天信息标注（按需扫描 + decisionCacheService 缓存徽标） | 0 ✅ → **2 ✅** |
-| 3 | 待办（todoPack + todoService + 消息反链，**先塞进 InsightInbox**） | 0, 2 |
+| 3 | 待办（todoPack + todoService + 消息反链，**先塞进 InsightInbox**） | 0, 2 → **3 ✅** |
 | 4 | 日记（diaryPack + 复用摘要器，**先出只读每日总结**） | 0, 3 |
 | 5 | Agent（agentPack + 工具表 + 有界循环 + 确认门，**先做命令式入口**） | 0–4 |
 

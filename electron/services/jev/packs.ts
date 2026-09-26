@@ -12,6 +12,7 @@
  * 4. 功能开关 + SettingsPage UI。
  */
 import { JUDGE_QUESTIONS, buildRankQuestion, buildStanceQuestions } from './questions'
+import { TODO_QUESTIONS } from './todoQuestions'
 
 export interface QuestionContext {
   /** 排序题要排的候选回复（replyPack 专用）。 */
@@ -79,6 +80,17 @@ export const QUESTION_PACKS: Record<string, QuestionPack> = {
         true_intent: JUDGE_QUESTIONS.true_intent,
         she_needs: JUDGE_QUESTIONS.she_needs
       }
+    }
+  },
+  /**
+   * 待办题集：从对话里捞出「需要我去做的事」。Jev 没有生成题，所以待办文本是消息本身，
+   * 这三道只负责判断「有没有 / 什么类型 / 有没有截止」。todo_present 是闸门题，<0.5 整条跳过。
+   */
+  todo: {
+    id: 'todo',
+    description: '待办提取：这条消息有没有要我做的事、什么类型、有没有截止',
+    buildQuestions() {
+      return { ...TODO_QUESTIONS }
     }
   }
 }

@@ -4,6 +4,33 @@
 
 ---
 
+## Phase 3：待办提取 — 2026-09-26（未发版，main 分支）
+
+从对话里捞出「要我去做的事」，轻量版不建独立 UI，直接塞进 InsightInbox（带消息反链）。
+**162 项测试全过**（73 + 24 + 15 + 21 + 29）。
+
+### 新增
+
+- **`todo` 题集**（`jev/todoQuestions.ts`）— 三道题：`todo_present`（闸门 noul：这条消息
+  有没有要我做的明确请求或承诺，<0.5 整条跳过）、`todo_when`（有没有明确截止）、
+  `todo_kind`（六类：约见/工作交办/承诺跟进/提醒/求助/其他）。Jev 没有生成题，待办文本
+  就是源消息本身，判断只负责分类和定性。
+- **`jevService.scanTodos()`** — 复用 annotate 的定位/批量管线（抽出 `loadMessages` /
+  `locateTargets` / `runDecideBatch` 三个私有方法）。闸门达标且未入库的写进
+  `insightRecordService`，`sourceType: 'jev_todo'`，`messageInsight` 带目标消息键/localId/
+  时间，点击卡片复用深度解析的反链跳转。同会话同消息不重复建；`forceRefresh` 先清后建。
+- **5 小时时间窗** — 与最新消息间隔超过 5 小时的消息不喂给判断（上一轮吵架、上次的话题会
+  带偏意图）。上下文既有条数上限（`cfg.context`）又有时长上限。注意 createTime 是 Unix
+  **秒**，时间窗常量也是秒。
+- **IPC `jev:scanTodos`** + preload + 类型；`InsightRecordSourceType` 加 `jev_todo`，
+  InsightInbox 加「Jev 待办」筛选 tab + 卡片渲染（类型/截止/把握 + 源消息反链）。
+- 前端：会话详情面板「提取待办」按钮（ChatPage），`TODO_KIND_LABELS` 进共享 `jevLabels.ts`。
+- `npm run test:jev:phase3` — 29 项：题集结构 / 闸门 / 入库内容 / 去重 / forceRefresh /
+  5 小时时间窗 / 死端点不留半成品。judge 端点指向本地 mock 服务器（按请求最后一条消息回
+  固定答案并记录 state），全程不联网。
+
+---
+
 ## Phase 2：聊天信息标注 — 2026-09-26（未发版，main 分支）
 
 按需扫一屏对方消息，给每条标「话里有话 / 字面意思 + 真实意图 + 对方需要」，徽标挂气泡上。

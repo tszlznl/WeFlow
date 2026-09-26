@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarDays, Code, Copy, MessageSquare, RefreshCw, Search, Sparkles, X } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
+import { TODO_KIND_LABELS } from '../jevLabels'
 import type {
   InsightRecord,
   InsightRecordContactFacet,
@@ -72,7 +73,9 @@ function getTriggerLabel(reason: InsightRecordTriggerReason): string {
 }
 
 function getSourceLabel(sourceType?: InsightRecordSourceType): string {
-  return sourceType === 'message_analysis' ? '深度解析' : 'AI 见解'
+  if (sourceType === 'message_analysis') return '深度解析'
+  if (sourceType === 'jev_todo') return 'Jev 待办'
+  return 'AI 见解'
 }
 
 function buildLogText(record: InsightRecord): string {
@@ -227,7 +230,8 @@ export default function InsightInboxPage() {
   }, [contactSearch, contacts])
 
   const openChat = (record: InsightRecordSummary) => {
-    if (record.sourceType === 'message_analysis' && record.messageInsight) {
+    // 深度解析和 Jev 待办都带目标消息，点卡片反链跳到那条消息
+    if (record.messageInsight && (record.sourceType === 'message_analysis' || record.sourceType === 'jev_todo')) {
       const query = new URLSearchParams({
         sessionId: record.sessionId,
         jumpSource: 'messageAnalysis',
@@ -364,12 +368,27 @@ export default function InsightInboxPage() {
                         </span>
                       </div>
                     )}
+                    {record.sourceType === 'jev_todo' && record.messageInsight && (
+                      <div className="message-analysis-target">
+                        <span className="message-analysis-target-label">源消息</span>
+                        <span className="message-analysis-target-text">
+                          {record.messageInsight.targetSenderName}：{record.messageInsight.targetTextPreview}
+                        </span>
+                      </div>
+                    )}
                     <p className="insight-body">{record.insight}</p>
                     {record.sourceType === 'message_analysis' && record.messageInsight && (
                       <div className="message-analysis-tags">
                         <span>情绪：{record.messageInsight.analysis.emotion}</span>
                         <span>意图：{record.messageInsight.analysis.intent}</span>
                         <span>话题：{record.messageInsight.analysis.topic}</span>
+                      </div>
+                    )}
+                    {record.sourceType === 'jev_todo' && record.messageInsight && (
+                      <div className="message-analysis-tags">
+                        <span>类型：{TODO_KIND_LABELS[record.messageInsight.analysis.intent] || record.messageInsight.analysis.intent}</span>
+                        <span>{record.messageInsight.analysis.topic}</span>
+                        <span>把握 {record.messageInsight.analysis.emotion}%</span>
                       </div>
                     )}
                   </div>
@@ -409,7 +428,8 @@ export default function InsightInboxPage() {
             {[
               { value: 'all', label: '全部' },
               { value: 'insight', label: 'AI 见解' },
-              { value: 'message_analysis', label: '深度解析' }
+              { value: 'message_analysis', label: '深度解析' },
+              { value: 'jev_todo', label: 'Jev 待办' }
             ].map((option) => (
               <button
                 key={option.value}
