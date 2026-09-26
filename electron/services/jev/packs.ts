@@ -14,6 +14,7 @@
 import { JUDGE_QUESTIONS, buildRankQuestion, buildStanceQuestions } from './questions'
 import { TODO_QUESTIONS } from './todoQuestions'
 import { DIARY_QUESTIONS } from './diaryQuestions'
+import { AGENT_QUESTIONS } from './agentQuestions'
 
 export interface QuestionContext {
   /** 排序题要排的候选回复（replyPack 专用）。 */
@@ -103,6 +104,18 @@ export const QUESTION_PACKS: Record<string, QuestionPack> = {
     description: '每日总结：整体情绪 + 值得记住的瞬间 + 有没有没收尾的事',
     buildQuestions() {
       return { ...DIARY_QUESTIONS }
+    }
+  },
+  /**
+   * Agent 题集：给一条命令，选该跑哪个工具。工具表见 agentQuestions.ts，
+   * criteria 就是工具表里的 description，工具能力变了只改一处。决策接口只会选工具，
+   * 不会自己执行——执行在 jevService.runAgent 的有界循环里，带确认门。
+   */
+  agent: {
+    id: 'agent',
+    description: 'Agent：这条命令该跑哪个工具（标注 / 待办 / 日记 / 该回吗 / 起草）',
+    buildQuestions() {
+      return { ...AGENT_QUESTIONS }
     }
   }
 }

@@ -1765,6 +1765,17 @@ export interface ElectronAPI {
       diary?: JevDiary
       error?: string
     }>
+    runAgent: (payload: {
+      command: string
+      sessionId: string
+      messages?: any[]
+      targets?: Array<{ key: string; createTime: number; text: string }>
+      replyTo?: string | null
+      displayName?: string
+      avatarUrl?: string
+      confirmed?: boolean
+      forceRefresh?: boolean
+    }) => Promise<AgentRunResult>
   }
 }
 
@@ -1778,6 +1789,29 @@ export interface JevDiary {
   unresolvedPct: number
   messageCount: number
   text: string
+}
+
+/** Agent 一步的执行结果 */
+export interface AgentStepResult {
+  tool: string
+  label: string
+  success: boolean
+  summary: string
+  error?: string
+}
+
+/**
+ * Agent 一次调用的返回。needsConfirm=true 时只有计划没有执行结果——
+ * 前端拿 confirmPrompt 问用户，确认后带 confirmed=true 重跑（决策命中缓存，不重复执行）。
+ */
+export interface AgentRunResult {
+  success: boolean
+  plan?: string[]
+  needsConfirm?: boolean
+  confirmPrompt?: string
+  steps?: AgentStepResult[]
+  truncated?: boolean
+  error?: string
 }
 
 /** 消息标注徽标：一条对方消息的判断结论（英文 choice key 由前端查表翻中文） */

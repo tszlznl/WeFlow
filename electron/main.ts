@@ -2242,6 +2242,37 @@ function registerIpcHandlers() {
     })
   })
 
+  // Agent：给一条命令，决策接口选工具、排计划、（副作用工具）先确认再执行。
+  ipcMain.handle('jev:runAgent', async (_, payload: {
+    command: string
+    sessionId: string
+    messages?: any[]
+    targets?: Array<{ key: string; createTime: number; text: string }>
+    replyTo?: string | null
+    displayName?: string
+    avatarUrl?: string
+    confirmed?: boolean
+    forceRefresh?: boolean
+  }) => {
+    if (!payload || typeof payload.sessionId !== 'string') {
+      return { success: false, error: '缺少 sessionId' }
+    }
+    if (typeof payload.command !== 'string' || !payload.command.trim()) {
+      return { success: false, error: '命令是空的' }
+    }
+    return jevService.runAgent({
+      command: payload.command,
+      sessionId: payload.sessionId,
+      messages: Array.isArray(payload.messages) ? payload.messages : undefined,
+      targets: Array.isArray(payload.targets) ? payload.targets : undefined,
+      replyTo: typeof payload.replyTo === 'string' ? payload.replyTo : null,
+      displayName: typeof payload.displayName === 'string' ? payload.displayName : undefined,
+      avatarUrl: typeof payload.avatarUrl === 'string' ? payload.avatarUrl : undefined,
+      confirmed: payload.confirmed === true,
+      forceRefresh: payload.forceRefresh === true
+    })
+  })
+
   // 消息标注：给一批对方消息逐条跑三道轻判断，徽标挂气泡上。按需扫描，结果带缓存。
   ipcMain.handle('jev:annotateSession', async (_, payload: {
     sessionId: string

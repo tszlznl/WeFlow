@@ -3281,6 +3281,115 @@
       margin-bottom: 0;
     }
 
+    // Jev 命令式入口：一行命令 + 执行，副作用工具先弹确认条
+    .detail-jev-agent-section {
+      .jev-agent-form {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .jev-agent-input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 9px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: 12px;
+        outline: none;
+        transition: border-color 0.15s;
+
+        &:focus {
+          border-color: var(--primary);
+        }
+
+        &::placeholder {
+          color: var(--text-tertiary);
+        }
+      }
+
+      .jev-agent-confirm {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--warning);
+        border-radius: 8px;
+        background: var(--card-bg);
+      }
+
+      .jev-agent-confirm-prompt {
+        margin: 0 0 8px;
+        font-size: 12px;
+        color: var(--text-primary);
+        line-height: 1.5;
+      }
+
+      .jev-agent-confirm-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .jev-agent-confirm-yes,
+      .jev-agent-confirm-no {
+        padding: 4px 14px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: opacity 0.15s;
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      .jev-agent-confirm-yes {
+        background: var(--warning);
+        color: #fff;
+      }
+
+      .jev-agent-confirm-no {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+      }
+
+      .jev-agent-steps {
+        margin-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .jev-agent-step {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 6px 9px;
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        border-left: 3px solid var(--success);
+
+        &.fail {
+          border-left-color: var(--danger);
+        }
+      }
+
+      .jev-agent-step-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .jev-agent-step-summary {
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.45;
+        word-break: break-all;
+      }
+    }
+
     .copy-btn {
       display: flex;
       align-items: center;

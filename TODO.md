@@ -74,6 +74,41 @@
 - InsightInbox 加「Jev 待办」筛选 tab + 卡片；ChatPage 详情面板加「提取待办」按钮。
 - 29 项新单测（`npm run test:jev:phase3`），用本地 mock 判断服务器，全程不联网。
 
+### ✅ Phase 4：日记（2026-09-26）
+
+只读每日总结，进 InsightInbox；Jev 无生成题，日记是「结论拼装」不是散文：
+
+- `diary` 题集（`jev/diaryQuestions.ts`）：`diary_mood`（choice 五类氛围）+
+  `diary_highlight` / `diary_unresolved`（noul）。**故意不吃 5 小时时间窗**——日记要覆盖
+  从早到晚。
+- `shapeDiary()`：整体把握取三道题选中结论把握的最低值（最保守）。**答案缺失按「没有」
+  处理**：没判出来不能说这天有值得记住的瞬间（测试逮出来的真实 bug）。
+- `jevService.summarizeDay()`：缓存键 `diary:${dayEnd}`，`ttlMs=0`；同一天按 id 删旧建新，
+  不清整个会话（不然今天会把昨天删掉）。`insightRecordService` 补 `deleteRecord(id)`。
+- InsightInbox 加「Jev 日记」tab + 卡片（氛围标签 / 把握 / 收尾状态）；日记卡片不带消息反链
+  （没有有效 localId），点卡片只进会话。ChatPage 详情面板加「生成今日小结」按钮。
+- 48 项新单测（`npm run test:jev:phase4`）：题集 / shapeDiary 边界（含残缺答案）/
+  入库内容 / 同天去重 / 不同天并存 / 缓存命中 / 死端点不写半成品。
+
+### ✅ Phase 5：Agent（2026-09-26）
+
+命令式入口的有界工具路由器。**Jev 只有 Noul/Choice/Score，不是生成式 LLM**，
+所以 Agent 的智能只在「选工具」，执行是确定性的：
+
+- `agent` 题集 + 工具表（`jev/agentQuestions.ts`）：五个工具（标注/待办/日记/该回吗/起草）。
+  **criteria 就是工具表的 description**，工具能力变了只改一处；测试断言两边 key 完全对齐。
+  `hasSideEffects` 标了写收件箱的两个。
+- `findAgentTool()`：`/todo` `/待办` 这类显式命令直接定位工具，**跳过决策调用不花钱**。
+  中英文别名 / 大小写 / 斜杠问号感叹号 / 空格归一化。
+- `jevService.runAgent()` 两段式：排计划（每轮只见一步，none 或重复工具就停，
+  硬上限 `MAX_AGENT_STEPS=5`）→ 确认门（**只有决策接口选的工具才问**，显式命令不必再问）
+  → 执行（一步硬失败就停）。没确认时只返回计划，前端问完带 `confirmed:true` 重跑，
+  决策命中缓存不重复执行。
+- 消息键 `messageKeyOf` 复用前端 `getMessageKey` 公式——待办去重靠它，不一致会重复入库。
+- 前端：详情面板「Jev 命令」区（输入框 + 确认条 + 逐步结果 + 截断提示）。
+- 47 项新单测（`npm run test:jev:phase5`）：题集对齐 / 命令归一化 / 跳过决策 /
+  确认门双向 / 只读工具不确认 / 重复工具停 / 死端点 / 幽灵工具 / 空 none / 空命令。
+
 ### 📋 待办
 
 - **跑一次 background 探针**：`JEV_JUDGE_KEY=… npm run test:jev:bg-probe`。
@@ -103,7 +138,7 @@
 | 2 | 聊天信息标注（按需扫描 + decisionCacheService 缓存徽标） | 0 ✅ → **2 ✅** |
 | 3 | 待办（todoPack + todoService + 消息反链，**先塞进 InsightInbox**） | 0, 2 → **3 ✅** |
 | 4 | 日记（diaryPack + 复用摘要器，**先出只读每日总结**） | 0, 3 → **4 ✅** |
-| 5 | Agent（agentPack + 工具表 + 有界循环 + 确认门，**先做命令式入口**） | 0–4 |
+| 5 | Agent（agentPack + 工具表 + 有界循环 + 确认门，**先做命令式入口**） | 0–4 → **5 ✅** |
 
 ### ❌ 不做（明确排除）
 

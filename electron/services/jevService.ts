@@ -18,6 +18,7 @@ import { DRAFT_PROVIDERS } from './jev/draft'
 import type { DraftProvider } from './jev/draft'
 import { messagesToBubbles } from './jev/adapter'
 import { pickReadableText } from './jev/pickText'
+import type { AgentToolSpec } from './jev/agentQuestions'
 
 export type { JevChatBubble } from './jev/adapter'
 
@@ -153,6 +154,35 @@ const ANNOTATE_CONCURRENCY = 3
  * createTime 是 Unix 秒，这里也是秒。
  */
 const DECISION_WINDOW_SECONDS = 5 * 60 * 60
+/** Agent 有界循环的硬上限：决策接口抽风无限编排工具时在这里被拦下。 */
+const MAX_AGENT_STEPS = 5
+
+/** Agent 一步的执行结果，给前端展示「做了什么、成没成」。 */
+export interface AgentStepResult {
+  tool: string
+  label: string
+  success: boolean
+  summary: string
+  error?: string
+}
+
+/**
+ * Agent 一次调用的返回。两段式：needsConfirm=true 时只有计划没有执行结果，
+ * 前端拿 confirmPrompt 去问用户，用户确认后带着 confirmed=true 重跑（决策命中缓存，不重复执行）。
+ */
+export interface AgentRunResult {
+  success: boolean
+  /** 计划出的工具 id 序列，确认门前就有，方便前端先展示再问。 */
+  plan?: string[]
+  /** 副作用工具未获许可时的确认文案。 */
+  needsConfirm?: boolean
+  confirmPrompt?: string
+  /** 每步的执行结果，和 plan 一一对应。 */
+  steps?: AgentStepResult[]
+  /** 撞上 MAX_AGENT_STEPS 被截断，提示用户计划没全跑完。 */
+  truncated?: boolean
+  error?: string
+}
 
 export class JevService {
   private config: ConfigService
@@ -694,6 +724,221 @@ export class JevService {
     })
 
     return { success: true, diary }
+  }
+
+  /**
+   * Agent：给一条命令，跑一串工具。
+   *
+   * 两段式：先把计划全决定下来（每轮只见一步，把已排工具喂回去问下一轮），计划定完再执行。
+   * 这样确认门只需要问一次「将执行 A/B/C」，用户确认后重跑时决策全命中缓存，不会重复执行工具。
+   * 循环有硬上限 MAX_AGENT_STEPS，决策接口抽风也不会无限编排。
+   *
+   * 副作用工具（写收件箱：todo / diary）在执行前必须 confirmed=true，否则只返回计划。
+   * 命令式入口（/todo 这类）跳过决策调用直接定位工具，不花钱。
+   */
+  async runAgent(params: {
+    command: string
+    sessionId: string
+    messages?: Message[]
+    targets?: Array<{ key: string; createTime: number; text: string }>
+    replyTo?: string | null
+    displayName?: string
+    avatarUrl?: string
+    /** 副作用工具的执行许可；false 时只出计划不执行。 */
+    confirmed?: boolean
+    forceRefresh?: boolean
+  }): Promise<AgentRunResult> {
+    const cfg = this.getConfig()
+    const command = String(params.command || '').trim()
+    if (!command) {
+      return { success: false, error: '命令是空的' }
+    }
+    if (!cfg.judgeApiKey) {
+      return { success: false, error: '未填写判断接口 API Key' }
+    }
+
+    const loaded = await this.loadMessages(params.sessionId, params.messages, Boolean(params.forceRefresh), cfg.context)
+    if (!Array.isArray(loaded)) {
+      return { success: false, error: loaded.error }
+    }
+    const messages = loaded
+
+    const { findAgentTool, AGENT_TOOLS } = await import('./jev/agentQuestions')
+
+    // ── 第一阶段：排计划 ────────────────────────────────────────────────────
+    // 直接命令（/todo）跳过决策接口；自然语言才花调用。
+    const direct = findAgentTool(command)
+    const plan: AgentToolSpec[] = []
+    let truncated = false
+    if (direct) {
+      plan.push(direct)
+    } else {
+      const bubbles = messagesToBubbles(this.filterRecentWindow(messages), params.sessionId)
+      if (bubbles.length === 0) {
+        return { success: false, error: '这个会话没有可分析的文本消息' }
+      }
+      const { decide } = await import('./jev/decide')
+      const { getPack } = await import('./jev/packs')
+      const { buildState } = await import('./jev/questions')
+
+      let truncated = false
+      for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+        // 已排的工具喂回去：决策接口看得见前面排了什么，才不会重复编排
+        const state = buildState(bubbles, cfg.relationship, cfg.context, params.replyTo || null) as Record<string, any>
+        state.agent = {
+          command,
+          steps: plan.map((t) => ({ tool: t.id, label: t.label }))
+        }
+        const questions = getPack('agent').buildQuestions()
+        let choice: string
+        try {
+          const { answers } = await decide(state, questions, {
+            judgeProvider: cfg.judgeProvider || undefined,
+            judgeEndpoint: cfg.judgeEndpoint || undefined,
+            judgeApiKey: cfg.judgeApiKey,
+            judgeModel: cfg.judgeModel || undefined
+          })
+          choice = String(answers.agent_tool?.choice || 'none')
+        } catch (e) {
+          return { success: false, error: `决策接口选工具失败：${e instanceof Error ? e.message : String(e)}` }
+        }
+        if (choice === 'none' || choice === '__none__') break
+        const tool = AGENT_TOOLS.find((t) => t.id === choice)
+        if (!tool) break // 决策接口回了张三李四，不认
+        // 计划里已经有这个工具就不再排（instructions 说了别重复，这里兜底）
+        if (plan.some((t) => t.id === tool.id)) break
+        plan.push(tool)
+        // 循环到头还没说 none：计划被硬上限截断，不是自然结束
+        truncated = step === MAX_AGENT_STEPS - 1
+      }
+    }
+
+    if (plan.length === 0) {
+      return {
+        success: false,
+        error: `没听懂这条命令。可以直接输入命令：${AGENT_TOOLS.map((t) => '`/' + t.aliases[0] + '`').join('、')}`
+      }
+    }
+
+    // 确认门：只有「决策接口选的工具」才问。显式命令（/待办）是用户自己点的名，
+    // 意图明确，再问一遍纯属啰嗦；自然语言才是接口替用户选的，有可能选错，才需要拦一下。
+    if (!direct) {
+      const sideEffecting = plan.filter((t) => t.hasSideEffects)
+      if (sideEffecting.length > 0 && !params.confirmed) {
+        return {
+          success: false,
+          needsConfirm: true,
+          plan: plan.map((t) => t.id),
+          confirmPrompt: `将执行：${plan.map((t) => t.label).join(' → ')}（${sideEffecting
+            .map((t) => t.label)
+            .join('、')} 会写进收件箱）`
+        }
+      }
+    }
+
+    // ── 第二阶段：按计划执行 ────────────────────────────────────────────────
+    const results: AgentStepResult[] = []
+    for (const tool of plan) {
+      const r = await this.executeAgentTool(tool, params, messages, cfg)
+      results.push({ tool: tool.id, label: tool.label, ...r })
+      // 一步硬失败就停：后面的工具多半依赖前面的结果，硬跑只会产出垃圾
+      if (!r.success) break
+    }
+
+    return {
+      success: results.length > 0 && results.every((r) => r.success),
+      plan: plan.map((t) => t.id),
+      steps: results,
+      truncated
+    }
+  }
+
+  /** 执行单个工具。工具表里有什么，这里就有什么——两边对不上就是 bug。 */
+  private async executeAgentTool(
+    tool: AgentToolSpec,
+    params: { sessionId: string; targets?: Array<{ key: string; createTime: number; text: string }>; replyTo?: string | null; displayName?: string; avatarUrl?: string; forceRefresh?: boolean },
+    messages: Message[],
+    cfg: JevConfig
+  ): Promise<{ success: boolean; summary: string; error?: string }> {
+    const sessionId = params.sessionId
+    switch (tool.id) {
+      case 'annotate': {
+        const targets = params.targets && params.targets.length > 0
+          ? params.targets
+          : this.targetsFromMessages(messages)
+        if (targets.length === 0) return { success: false, summary: '', error: '当前窗口没有可标注的对方文字消息' }
+        const r = await this.annotateSession({ sessionId, messages, targets, forceRefresh: params.forceRefresh })
+        return r.success
+          ? { success: true, summary: `标注 ${r.scanned + r.cached} 条（新算 ${r.scanned}，缓存 ${r.cached}）` }
+          : { success: false, summary: '', error: r.error }
+      }
+      case 'todos': {
+        const targets = params.targets && params.targets.length > 0
+          ? params.targets
+          : this.targetsFromMessages(messages)
+        if (targets.length === 0) return { success: false, summary: '', error: '当前窗口没有可扫描的对方文字消息' }
+        const r = await this.scanTodos({
+          sessionId,
+          messages,
+          targets,
+          displayName: params.displayName,
+          avatarUrl: params.avatarUrl,
+          forceRefresh: params.forceRefresh
+        })
+        return r.success
+          ? { success: true, summary: `新增 ${r.added} 条待办${r.skipped ? `，已存在 ${r.skipped} 条` : ''}` }
+          : { success: false, summary: '', error: r.error }
+      }
+      case 'diary': {
+        const r = await this.summarizeDay({
+          sessionId,
+          messages,
+          dayEndTime: messages.length > 0 ? messages[messages.length - 1].createTime : 0,
+          displayName: params.displayName,
+          avatarUrl: params.avatarUrl,
+          forceRefresh: params.forceRefresh
+        })
+        return r.success && r.diary
+          ? { success: true, summary: r.diary.text }
+          : { success: false, summary: '', error: r.error }
+      }
+      case 'verdict': {
+        const r = await this.quickDecide({ sessionId, replyTo: params.replyTo, messages })
+        return r.success
+          ? { success: true, summary: `${r.verdict === 'reply' ? '该现在回' : '先别急着回'}（把握 ${r.confidence}%）${r.sheNeeds ? `，对方想要：${r.sheNeeds}` : ''}` }
+          : { success: false, summary: '', error: r.error }
+      }
+      case 'draft': {
+        const r = await this.analyzeSession({ sessionId, replyTo: params.replyTo, messages })
+        return r.success
+          ? { success: true, summary: `起草了 ${r.candidates.length} 条候选，最佳：${String(r.bestReply).slice(0, 30)}` }
+          : { success: false, summary: '', error: r.error }
+      }
+      default:
+        return { success: false, summary: '', error: `未知工具：${tool.id}` }
+    }
+  }
+
+  /** 没传 targets 时从消息流里取对方文字消息，和前端的取法一致。 */
+  private targetsFromMessages(messages: Message[]): Array<{ key: string; createTime: number; text: string }> {
+    const targets: Array<{ key: string; createTime: number; text: string }> = []
+    for (let i = messages.length - 1; i >= 0 && targets.length < MAX_ANNOTATE_TARGETS; i--) {
+      const m = messages[i]
+      if (!m || m.isSend !== 0 || m.localType !== 1) continue
+      const text = String(m.parsedContent || '').trim() || String(m.rawContent || m.content || '').trim()
+      if (!text) continue
+      targets.push({ key: this.messageKeyOf(m), createTime: m.createTime, text })
+    }
+    return targets
+  }
+
+  /**
+   * 消息键。和前端 ChatPage 的 getMessageKey 同一个公式——待办去重靠它，
+   * 两边算不一致就会出现「按钮建一次、Agent 又建一次」的重复记录。
+   */
+  private messageKeyOf(m: Message): string {
+    if (m.messageKey) return m.messageKey
+    return `fallback:${m._db_path || ''}:${m.serverId || 0}:${m.createTime}:${m.sortSeq || 0}:${m.localId || 0}:${m.senderUsername || ''}:${m.localType || 0}`
   }
 
   /** 判断接口通不通：发一个最小 state 过去，只要 HTTP 不是 4xx/5xx 就算通。 */

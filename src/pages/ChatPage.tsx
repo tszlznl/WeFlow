@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Search, MessageSquare, AlertCircle, Loader2, RefreshCw, X, ChevronDown, ChevronLeft, Info, Calendar, Database, Hash, Play, Pause, Image as ImageIcon, Mic, CheckCircle, Copy, Check, CheckSquare, Download, BarChart3, Edit2, Trash2, BellOff, Users, FolderClosed, UserCheck, Crown, Aperture, Newspaper, Star, Sparkles, Code2 } from 'lucide-react'
+import { Search, MessageSquare, AlertCircle, Loader2, RefreshCw, X, ChevronDown, ChevronLeft, Info, Calendar, Database, Hash, Play, Pause, Image as ImageIcon, Mic, CheckCircle, Copy, Check, CheckSquare, Download, BarChart3, Edit2, Trash2, BellOff, Users, FolderClosed, UserCheck, Crown, Aperture, Newspaper, Star, Sparkles, Code2, Terminal } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -18,7 +18,7 @@ import JumpToDatePopover from '../components/JumpToDatePopover'
 import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
 import { JevResultModal } from '../components/JevResultModal'
 import { SHE_NEEDS_LABELS, TRUE_INTENT_LABELS, DIARY_MOOD_LABELS } from '../jevLabels'
-import type { JevAnnotation } from '../types/electron'
+import type { JevAnnotation, AgentStepResult } from '../types/electron'
 import { type ContactSnsTimelineTarget, isSingleContactSession } from '../components/Sns/contactSnsTimeline'
 import * as configService from '../services/config'
 import BizPage, { BizAccountList, BizMessageArea, BizAccount } from './BizPage'
@@ -1889,6 +1889,13 @@ function ChatPage(props: ChatPageProps) {
   // Jev 日记：只读每日总结，也进 InsightInbox
   const [isSummarizingDay, setIsSummarizingDay] = useState(false)
   const [diaryHint, setDiaryHint] = useState<string | null>(null)
+  // Jev Agent：命令式入口，决策接口选工具，副作用工具先确认
+  const [agentCommand, setAgentCommand] = useState('')
+  const [isAgentRunning, setIsAgentRunning] = useState(false)
+  const [agentHint, setAgentHint] = useState<string | null>(null)
+  const [agentConfirm, setAgentConfirm] = useState<{ plan: string[]; confirmPrompt: string } | null>(null)
+  const [agentSteps, setAgentSteps] = useState<AgentStepResult[] | null>(null)
+  const [agentTruncated, setAgentTruncated] = useState(false)
   /** 后端 MAX_ANNOTATE_TARGETS 的镜像，前后端各存一份避免跨进程常量同步 */
   const MAX_ANNOTATE = 15
   const [jevCopiedKey, setJevCopiedKey] = useState<string | null>(null)
@@ -3621,6 +3628,10 @@ function ChatPage(props: ChatPageProps) {
     setAnnotateHint(null)
     setTodoHint(null)
     setDiaryHint(null)
+    setAgentConfirm(null)
+    setAgentSteps(null)
+    setAgentHint(null)
+    setAgentTruncated(false)
     setJevError(null)
     setIsAnalyzingJev(false)
     if (sessionInsightHintTimerRef.current !== null) {
@@ -7052,6 +7063,55 @@ function ChatPage(props: ChatPageProps) {
     }
   }, [currentSessionId, isSummarizingDay, messages, currentSession])
 
+  // Jev Agent：把命令交给后端排计划。副作用工具先返回 needsConfirm，用户确认了再带着 confirmed 重跑。
+  const handleJevAgentRun = useCallback(async (confirmed = false) => {
+    const sessionId = String(currentSessionId || '').trim()
+    const command = agentCommand.trim()
+    if (!sessionId || isAgentRunning) return
+    if (!command) {
+      setAgentHint('命令是空的，试试 /待办')
+      return
+    }
+
+    setIsAgentRunning(true)
+    setAgentHint(null)
+    if (!confirmed) {
+      setAgentConfirm(null)
+      setAgentSteps(null)
+      setAgentTruncated(false)
+    }
+    try {
+      const result = await window.electronAPI.jev.runAgent({
+        command,
+        sessionId,
+        messages,
+        replyTo: null,
+        displayName: currentSession?.displayName,
+        avatarUrl: currentSession?.avatarUrl,
+        confirmed
+      })
+      if (result.needsConfirm && result.confirmPrompt) {
+        // 副作用工具：亮出确认按钮，等用户点头
+        setAgentConfirm({ plan: result.plan || [], confirmPrompt: result.confirmPrompt })
+        setAgentSteps(null)
+      } else if (result.success) {
+        setAgentConfirm(null)
+        setAgentSteps(result.steps || [])
+        setAgentTruncated(Boolean(result.truncated))
+      } else {
+        setAgentConfirm(null)
+        setAgentSteps(result.steps && result.steps.length > 0 ? result.steps : null)
+        setAgentTruncated(Boolean(result.truncated))
+        setAgentHint(result.error || '执行失败，请检查接口配置')
+      }
+    } catch (e) {
+      setAgentConfirm(null)
+      setAgentHint(`执行失败：${(e as Error).message || String(e)}`)
+    } finally {
+      setIsAgentRunning(false)
+    }
+  }, [currentSessionId, isAgentRunning, agentCommand, messages, currentSession])
+
   // 组件卸载时清掉自动消失计时器，别在已卸载的组件上 setState
   useEffect(() => {
     return () => {
@@ -9040,6 +9100,79 @@ const handleGroupAnalytics = useCallback(() => {
                           )}
                         </div>
                       )}
+
+                      {jevEnabled && (
+                      <div className="detail-section detail-jev-agent-section">
+                        <div className="section-title">
+                          <Terminal size={14} />
+                          <span>Jev 命令</span>
+                        </div>
+                        <p className="detail-jev-hint">
+                          输入命令让 Jev 干活。直接敲命令（/标注、/待办、/日记、/该回吗、/起草）不花判断钱；
+                          也可以写自然语言（「帮我整理一下这个会话」），判断接口来选工具。
+                        </p>
+                        <form
+                          className="jev-agent-form"
+                          onSubmit={(e) => { e.preventDefault(); void handleJevAgentRun() }}
+                        >
+                          <input
+                            className="jev-agent-input"
+                            value={agentCommand}
+                            onChange={(e) => setAgentCommand(e.target.value)}
+                            placeholder="/待办  或  帮我看看这个会话"
+                            disabled={isAgentRunning}
+                          />
+                          <button
+                            type="submit"
+                            className="detail-inline-btn detail-jev-btn"
+                            disabled={isAgentRunning || !agentCommand.trim()}
+                          >
+                            {isAgentRunning
+                              ? <><Loader2 size={13} className="spin" /> 执行中...</>
+                              : <><img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={14} height={14} /> 执行</>}
+                          </button>
+                        </form>
+                        {agentConfirm && (
+                          <div className="jev-agent-confirm">
+                            <p className="jev-agent-confirm-prompt">{agentConfirm.confirmPrompt}</p>
+                            <div className="jev-agent-confirm-actions">
+                              <button
+                                className="jev-agent-confirm-yes"
+                                onClick={() => void handleJevAgentRun(true)}
+                                disabled={isAgentRunning}
+                              >
+                                确认执行
+                              </button>
+                              <button
+                                className="jev-agent-confirm-no"
+                                onClick={() => setAgentConfirm(null)}
+                                disabled={isAgentRunning}
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {agentSteps && agentSteps.length > 0 && (
+                          <div className="jev-agent-steps">
+                            {agentSteps.map((s, i) => (
+                              <div key={`${s.tool}-${i}`} className={`jev-agent-step ${s.success ? 'ok' : 'fail'}`}>
+                                <span className="jev-agent-step-label">{s.label}</span>
+                                <span className="jev-agent-step-summary">{s.summary || s.error}</span>
+                              </div>
+                            ))}
+                            {agentTruncated && (
+                              <p className="detail-jev-hint detail-jev-annotate-hint">
+                                计划太长被截断了，没全跑完，可以再发一次命令继续。
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {agentHint && (
+                          <p className="detail-jev-hint detail-jev-annotate-hint">{agentHint}</p>
+                        )}
+                      </div>
+                    )}
 
                       <div className="detail-section detail-stats-section">
                         <div className="section-title">
