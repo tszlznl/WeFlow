@@ -26,6 +26,7 @@
     "test:jev:phase3": "esbuild electron/services/jev/__tests__/jev.phase3.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-phase3.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-phase3.cjs",
     "test:jev:phase4": "esbuild electron/services/jev/__tests__/jev.phase4.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-phase4.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-phase4.cjs",
     "test:jev:phase5": "esbuild electron/services/jev/__tests__/jev.phase5.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-phase5.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-phase5.cjs",
+    "test:jev:live-zh": "esbuild electron/services/jev/__tests__/jev.live-zh.test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-live-zh.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-live-zh.cjs",
     "test:jev:bg-probe": "esbuild electron/services/jev/__tests__/jev.bg-probe.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/jev-bg-probe.cjs --alias:electron=./electron/services/jev/__tests__/electron-stub.js && node node_modules/.cache/jev-bg-probe.cjs",
     "build": "node scripts/clean-dist-electron.cjs && tsc && vite build && electron-builder",
     "preview": "vite preview",
