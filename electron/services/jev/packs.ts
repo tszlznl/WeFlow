@@ -13,6 +13,7 @@
  */
 import { JUDGE_QUESTIONS, buildRankQuestion, buildStanceQuestions } from './questions'
 import { TODO_QUESTIONS } from './todoQuestions'
+import { DIARY_QUESTIONS } from './diaryQuestions'
 
 export interface QuestionContext {
   /** 排序题要排的候选回复（replyPack 专用）。 */
@@ -91,6 +92,17 @@ export const QUESTION_PACKS: Record<string, QuestionPack> = {
     description: '待办提取：这条消息有没有要我做的事、什么类型、有没有截止',
     buildQuestions() {
       return { ...TODO_QUESTIONS }
+    }
+  },
+  /**
+   * 日记题集：对一整天的总结。结论拼装（情绪走向 + 值得记住的瞬间 + 没收尾的事），
+   * 不是生成散文。喂一整天的气泡，不吃 5 小时时间窗。
+   */
+  diary: {
+    id: 'diary',
+    description: '每日总结：整体情绪 + 值得记住的瞬间 + 有没有没收尾的事',
+    buildQuestions() {
+      return { ...DIARY_QUESTIONS }
     }
   }
 }

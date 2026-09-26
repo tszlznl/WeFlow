@@ -90,6 +90,58 @@ export function shapeAnnotation(answers: Record<string, any>): JevAnnotation {
   }
 }
 
+export interface JevDiary {
+  /** 整体情绪走向（英文 choice key，前端查表翻中文） */
+  mood?: string
+  moodPct: number
+  hasHighlight: boolean
+  highlightPct: number
+  unresolved: boolean
+  unresolvedPct: number
+  /** 当天文本消息条数（前端也能算，后端算省一次传参） */
+  messageCount: number
+  /** 拼好的只读总结，直接进收件箱 */
+  text: string
+}
+
+/**
+ * 把 diary 题集的 answers 整成日记。Jev 写不了散文，日记是结论拼装：
+ * 情绪走向 + 值得记住的瞬间 + 有没有没收尾的事，加上消息条数。
+ * 所有 noul 的把握都按选中结论算（否定态是 1-v）。
+ */
+export function shapeDiary(answers: Record<string, any>, messageCount: number): JevDiary {
+  // noul 缺失时给 null：没判出来就不能说这天有亮点 / 没收尾
+  const noulOf = (v: any): number | null =>
+    v && typeof v.noul === 'number' ? v.noul : null
+  const highlightNoul = noulOf(answers.diary_highlight)
+  const unresolvedNoul = noulOf(answers.diary_unresolved)
+  // 算把握时缺失按 0.5 走（=没信号），但不影响上面的结论
+  const h = highlightNoul === null ? 0.5 : highlightNoul
+  const u = unresolvedNoul === null ? 0.5 : unresolvedNoul
+
+  const hasHighlight = highlightNoul !== null && highlightNoul >= 0.5
+  const unresolved = unresolvedNoul !== null && unresolvedNoul >= 0.5
+  const mood = answers.diary_mood?.choice || undefined
+
+  // 文本里不放 mood：mood 是英文 choice key，中文标签由收件箱卡片按 analysis.intent 查表渲染
+  const parts: string[] = [`今日小结：聊了 ${messageCount} 条文本消息`]
+  parts.push(hasHighlight ? '有值得记住的瞬间' : '没有特别的瞬间')
+  parts.push(unresolved ? '结束时有没处理完的事（见待办）' : '事情都收尾了')
+
+  return {
+    mood,
+    // mood 是 choice 题，没有 noul 把握；用三道题里「选中结论把握的最低值」当整体把握，
+    // 取最保守的那个；答案缺失时把握是 50%
+    moodPct: Math.round(Math.min(hasHighlight ? h : 1 - h, unresolved ? u : 1 - u) * 100),
+    hasHighlight,
+    highlightPct: Math.round((hasHighlight ? h : 1 - h) * 100),
+    unresolved,
+    unresolvedPct: Math.round((unresolved ? u : 1 - u) * 100),
+    messageCount,
+    text: parts.join('，')
+  }
+}
+
 /** 一次标注最多扫多少条：再多就太贵，而且通常只看最近一屏 */
 const MAX_ANNOTATE_TARGETS = 15
 /** 标注并发数：顺序跑 10 条要 ~20 秒，3 路并发 ~7 秒，又不至于撞 rate limit */
@@ -528,6 +580,120 @@ export class JevService {
       scanned: results.length,
       error: errors[0] && added > 0 ? `部分失败：${errors[0]}` : undefined
     }
+  }
+
+  /**
+   * 每日总结（只读）：对一整天（或当前窗口）的对话跑 diary 题集，拼一段结论，
+   * 塞进 InsightInbox。Jev 写不了散文，日记是「情绪走向 + 值得记住的瞬间 + 有没有
+   * 收尾的事 + 消息条数」的拼装。
+   *
+   * 注意：日记不吃 5 小时时间窗——它要覆盖从早到晚，吃了窗口早上的消息就没了。
+   * 同一天不重复建（以「当天最后一条消息的 createTime」为锚），forceRefresh 先清后建。
+   */
+  async summarizeDay(params: {
+    sessionId: string
+    messages?: Message[]
+    /** 当天最后一条消息的时间，既当去重锚点也当反链跳转目标 */
+    dayEndTime?: number
+    displayName?: string
+    avatarUrl?: string
+    forceRefresh?: boolean
+  }): Promise<{ success: boolean; diary?: JevDiary; error?: string }> {
+    const cfg = this.getConfig()
+    if (!cfg.judgeApiKey) {
+      return { success: false, error: '未填写判断接口 API Key' }
+    }
+
+    const loaded = await this.loadMessages(params.sessionId, params.messages, false, cfg.context)
+    if (!Array.isArray(loaded)) {
+      return { success: false, error: loaded.error }
+    }
+    const messages = loaded
+
+    const bubbles = messagesToBubbles(messages, params.sessionId)
+    if (bubbles.length === 0) {
+      return { success: false, error: '这个会话没有可总结的文本消息' }
+    }
+
+    // 锚点：优先用调用方给的 dayEndTime，否则取窗口最后一条
+    const dayEnd = params.dayEndTime || messages[messages.length - 1].createTime || 0
+    const cacheKey = `diary:${dayEnd}`
+
+    const { insightRecordService } = await import('./insightRecordService')
+    const { decide } = await import('./jev/decide')
+    const { getPack } = await import('./jev/packs')
+    const { buildState } = await import('./jev/questions')
+
+    // 命中缓存就直接用上次的结论（日记跨天，ttlMs=0 = 永不过期，有效性由「同一天」语义保证）
+    const cached = this.decisionCache.get('diary', params.sessionId, cacheKey, 0)
+    let diary: JevDiary
+    if (cached && !params.forceRefresh) {
+      diary = cached as JevDiary
+    } else {
+      try {
+        const state = buildState(bubbles, cfg.relationship, cfg.context, null)
+        const questions = getPack('diary').buildQuestions()
+        const { answers } = await decide(state, questions, {
+          judgeProvider: cfg.judgeProvider || undefined,
+          judgeEndpoint: cfg.judgeEndpoint || undefined,
+          judgeApiKey: cfg.judgeApiKey,
+          judgeModel: cfg.judgeModel || undefined
+        })
+        diary = shapeDiary(answers, bubbles.length)
+        this.decisionCache.set('diary', params.sessionId, cacheKey, diary as unknown as Record<string, any>)
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
+
+    // 写进收件箱；同一天（同 dayEnd）的旧记录按 id 删掉再建，不清整个会话——
+    // 不然生成今天的日记会把昨天的删掉
+    const existing = insightRecordService.listRecords({ sourceType: 'jev_diary', sessionId: params.sessionId, limit: 200 })
+    for (const r of existing.records) {
+      if (r.messageInsight?.targetCreateTime === dayEnd) {
+        insightRecordService.deleteRecord(r.id)
+      }
+    }
+
+    const t0 = Date.now()
+    insightRecordService.addRecord({
+      sessionId: params.sessionId,
+      displayName: params.displayName || params.sessionId,
+      avatarUrl: params.avatarUrl,
+      sourceType: 'jev_diary',
+      triggerReason: 'manual',
+      insight: diary.text,
+      messageInsight: {
+        targetLocalId: 0,
+        targetCreateTime: dayEnd,
+        targetMessageKey: cacheKey,
+        targetSenderName: '',
+        targetTextPreview: '',
+        analysis: {
+          explicitText: diary.text,
+          emotion: String(diary.moodPct),
+          intent: diary.mood || '',
+          topic: diary.unresolved ? '有未处理完的事' : '已收尾'
+        }
+      },
+      log: {
+        endpoint: cfg.judgeEndpoint || '',
+        model: cfg.judgeModel || '',
+        maxTokens: 0,
+        temperature: 0,
+        triggerReason: 'manual',
+        allowContext: true,
+        contextCount: cfg.context,
+        systemPrompt: 'jev decisions: diary pack (diary_mood / diary_highlight / diary_unresolved)',
+        userPrompt: '',
+        rawOutput: JSON.stringify(diary),
+        finalInsight: diary.text,
+        durationMs: Date.now() - t0,
+        createdAt: Date.now()
+      }
+    })
+
+    return { success: true, diary }
   }
 
   /** 判断接口通不通：发一个最小 state 过去，只要 HTTP 不是 4xx/5xx 就算通。 */

@@ -4,6 +4,37 @@
 
 ---
 
+## Phase 4：日记 — 2026-09-26（未发版，main 分支）
+
+对一整天的对话跑一次判断，拼一段**只读**每日总结进 InsightInbox。Jev 只有 Noul/Choice、
+写不出散文，所以日记是「结论拼装」而非生成：氛围（choice）+ 有没有值得记住的瞬间（noul）
++ 事情收尾了没（noul），加上前端自己能算的消息条数。
+**210 项测试全过**（73 + 24 + 15 + 21 + 29 + 48）。
+
+### 新增
+
+- **`diary` 题集**（`jev/diaryQuestions.ts`）— 三道题：`diary_mood`（choice 五类氛围：
+  轻松愉快/平淡日常/小有摩擦/明显冲突/冷战疏远）、`diary_highlight`（有没有值得记住的瞬间
+  或重要决定）、`diary_unresolved`（结束时还有没有没收尾的事，呼应待办）。
+  **日记故意不吃 5 小时时间窗**——日记要覆盖从早到晚，吃了窗口早上的消息就没了。
+- **`shapeDiary()`**（`jevService.ts`，导出）— 答案整形为 `JevDiary`。整体把握取三道题里
+  选中结论把握的最低值（最保守）。**答案缺失时按「没有」处理**：没判出来就不能说这天
+  有值得记住的瞬间（缺失时把握显示 50%）。
+- **`jevService.summarizeDay()`** — 缓存键 `diary:${dayEnd}`，`ttlMs=0` 永不过期（有效性由
+  「同一天」语义保证）；state 喂一整天气泡；同一天（同 `dayEnd`）的旧记录按 id 删掉再建，
+  不清整个会话——不然生成今天的会把昨天的删掉。`InsightRecordSourceType` 加 `jev_diary`。
+- **`insightRecordService.deleteRecord(id)`** — `clearRecords` 只按 sessionId + 时间段筛，
+  没法按「总结到哪天」去重，所以补一个按 id 删。
+- **IPC `jev:summarizeDay`** + preload + 类型；InsightInbox 加「Jev 日记」筛选 tab + 卡片
+  渲染（氛围标签 / 氛围把握 / 已收尾或有未处理完的事）。日记卡片不带消息反链（没有有效
+  localId），点卡片只进会话不定位消息。
+- 前端：会话详情面板「生成今日小结」按钮（ChatPage），`DIARY_MOOD_LABELS` 进共享 `jevLabels.ts`。
+- `npm run test:jev:phase4` — 48 项：题集结构 / shapeDiary 边界（含残缺答案） /
+  summarizeDay 入库内容 / 同天去重 / 不同天并存 / 缓存命中 / 无 key 拒绝 / 死端点不写
+  半成品 / 时间窗不吃。本地 mock 服务器，全程不联网。
+
+---
+
 ## Phase 3：待办提取 — 2026-09-26（未发版，main 分支）
 
 从对话里捞出「要我去做的事」，轻量版不建独立 UI，直接塞进 InsightInbox（带消息反链）。

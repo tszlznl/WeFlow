@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarDays, Code, Copy, MessageSquare, RefreshCw, Search, Sparkles, X } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
-import { TODO_KIND_LABELS } from '../jevLabels'
+import { TODO_KIND_LABELS, DIARY_MOOD_LABELS } from '../jevLabels'
 import type {
   InsightRecord,
   InsightRecordContactFacet,
@@ -75,6 +75,7 @@ function getTriggerLabel(reason: InsightRecordTriggerReason): string {
 function getSourceLabel(sourceType?: InsightRecordSourceType): string {
   if (sourceType === 'message_analysis') return '深度解析'
   if (sourceType === 'jev_todo') return 'Jev 待办'
+  if (sourceType === 'jev_diary') return 'Jev 日记'
   return 'AI 见解'
 }
 
@@ -391,6 +392,15 @@ export default function InsightInboxPage() {
                         <span>把握 {record.messageInsight.analysis.emotion}%</span>
                       </div>
                     )}
+                    {record.sourceType === 'jev_diary' && record.messageInsight && (
+                      <div className="message-analysis-tags">
+                        {record.messageInsight.analysis.intent && (
+                          <span>氛围：{DIARY_MOOD_LABELS[record.messageInsight.analysis.intent] || record.messageInsight.analysis.intent}</span>
+                        )}
+                        <span>氛围把握 {record.messageInsight.analysis.emotion}%</span>
+                        <span>{record.messageInsight.analysis.topic}</span>
+                      </div>
+                    )}
                   </div>
                 </article>
               ))}
@@ -429,7 +439,8 @@ export default function InsightInboxPage() {
               { value: 'all', label: '全部' },
               { value: 'insight', label: 'AI 见解' },
               { value: 'message_analysis', label: '深度解析' },
-              { value: 'jev_todo', label: 'Jev 待办' }
+              { value: 'jev_todo', label: 'Jev 待办' },
+              { value: 'jev_diary', label: 'Jev 日记' }
             ].map((option) => (
               <button
                 key={option.value}

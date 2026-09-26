@@ -17,7 +17,7 @@ import { AnimatedStreamingText } from '../components/AnimatedStreamingText'
 import JumpToDatePopover from '../components/JumpToDatePopover'
 import { ContactSnsTimelineDialog } from '../components/Sns/ContactSnsTimelineDialog'
 import { JevResultModal } from '../components/JevResultModal'
-import { SHE_NEEDS_LABELS, TRUE_INTENT_LABELS } from '../jevLabels'
+import { SHE_NEEDS_LABELS, TRUE_INTENT_LABELS, DIARY_MOOD_LABELS } from '../jevLabels'
 import type { JevAnnotation } from '../types/electron'
 import { type ContactSnsTimelineTarget, isSingleContactSession } from '../components/Sns/contactSnsTimeline'
 import * as configService from '../services/config'
@@ -1886,6 +1886,9 @@ function ChatPage(props: ChatPageProps) {
   // Jev 待办：扫出来塞进 InsightInbox，轻量版不建独立 UI
   const [isScanningTodos, setIsScanningTodos] = useState(false)
   const [todoHint, setTodoHint] = useState<string | null>(null)
+  // Jev 日记：只读每日总结，也进 InsightInbox
+  const [isSummarizingDay, setIsSummarizingDay] = useState(false)
+  const [diaryHint, setDiaryHint] = useState<string | null>(null)
   /** 后端 MAX_ANNOTATE_TARGETS 的镜像，前后端各存一份避免跨进程常量同步 */
   const MAX_ANNOTATE = 15
   const [jevCopiedKey, setJevCopiedKey] = useState<string | null>(null)
@@ -3617,6 +3620,7 @@ function ChatPage(props: ChatPageProps) {
     setJevAnnotations({})
     setAnnotateHint(null)
     setTodoHint(null)
+    setDiaryHint(null)
     setJevError(null)
     setIsAnalyzingJev(false)
     if (sessionInsightHintTimerRef.current !== null) {
@@ -7011,6 +7015,43 @@ function ChatPage(props: ChatPageProps) {
     }
   }, [currentSessionId, isScanningTodos, messages, currentSession])
 
+  // 今日小结：对当前窗口跑 diary 题集，拼一段只读结论进收件箱
+  const handleJevSummarizeDay = useCallback(async (forceRefresh = false) => {
+    const sessionId = String(currentSessionId || '').trim()
+    if (!sessionId || isSummarizingDay) return
+    if (messages.length === 0) {
+      setDiaryHint('当前窗口没有可总结的消息')
+      return
+    }
+
+    setIsSummarizingDay(true)
+    setDiaryHint(null)
+    try {
+      const result = await window.electronAPI.jev.summarizeDay({
+        sessionId,
+        messages,
+        displayName: currentSession?.displayName,
+        avatarUrl: currentSession?.avatarUrl,
+        forceRefresh
+      })
+      if (result.success && result.diary) {
+        const d = result.diary
+        const mood = d.mood ? DIARY_MOOD_LABELS[d.mood] || d.mood : ''
+        setDiaryHint(
+          `已生成：${mood ? `整体「${mood}」${d.moodPct}% · ` : ''}` +
+          `${d.hasHighlight ? '有值得记住的瞬间 · ' : ''}` +
+          `${d.unresolved ? '有未处理完的事' : '事情都收尾了'}，在收件箱里看`
+        )
+      } else {
+        setDiaryHint(result.error || '总结失败，请检查接口配置')
+      }
+    } catch (e) {
+      setDiaryHint(`总结失败：${(e as Error).message || String(e)}`)
+    } finally {
+      setIsSummarizingDay(false)
+    }
+  }, [currentSessionId, isSummarizingDay, messages, currentSession])
+
   // 组件卸载时清掉自动消失计时器，别在已卸载的组件上 setState
   useEffect(() => {
     return () => {
@@ -8981,6 +9022,21 @@ const handleGroupAnalytics = useCallback(() => {
                           </button>
                           {todoHint && (
                             <p className="detail-jev-hint detail-jev-annotate-hint">{todoHint}</p>
+                          )}
+                          <p className="detail-jev-hint">
+                            对当前窗口的对话跑一次总结：整体氛围、有没有值得记住的瞬间、事情收尾了没。只读，进收件箱。
+                          </p>
+                          <button
+                            className="detail-inline-btn detail-jev-btn"
+                            onClick={() => void handleJevSummarizeDay(false)}
+                            disabled={isSummarizingDay}
+                          >
+                            {isSummarizingDay
+                              ? <><Loader2 size={13} className="spin" /> 总结中...</>
+                              : <><img src={JEV_AVATAR_URL} alt="" className="jev-avatar" width={14} height={14} /> 生成今日小结</>}
+                          </button>
+                          {diaryHint && (
+                            <p className="detail-jev-hint detail-jev-annotate-hint">{diaryHint}</p>
                           )}
                         </div>
                       )}

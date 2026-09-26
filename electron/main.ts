@@ -2220,6 +2220,28 @@ function registerIpcHandlers() {
     })
   })
 
+  // 每日总结（只读）：对一整天的对话跑 diary 题集，拼一段结论塞进 InsightInbox。
+  ipcMain.handle('jev:summarizeDay', async (_, payload: {
+    sessionId: string
+    messages?: any[]
+    dayEndTime?: number
+    displayName?: string
+    avatarUrl?: string
+    forceRefresh?: boolean
+  }) => {
+    if (!payload || typeof payload.sessionId !== 'string') {
+      return { success: false, error: '缺少 sessionId' }
+    }
+    return jevService.summarizeDay({
+      sessionId: payload.sessionId,
+      messages: Array.isArray(payload.messages) ? payload.messages : undefined,
+      dayEndTime: typeof payload.dayEndTime === 'number' ? payload.dayEndTime : undefined,
+      displayName: typeof payload.displayName === 'string' ? payload.displayName : undefined,
+      avatarUrl: typeof payload.avatarUrl === 'string' ? payload.avatarUrl : undefined,
+      forceRefresh: payload.forceRefresh === true
+    })
+  })
+
   // 消息标注：给一批对方消息逐条跑三道轻判断，徽标挂气泡上。按需扫描，结果带缓存。
   ipcMain.handle('jev:annotateSession', async (_, payload: {
     sessionId: string

@@ -713,6 +713,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       displayName?: string
       avatarUrl?: string
       forceRefresh?: boolean
-    }) => ipcRenderer.invoke('jev:scanTodos', payload)
+    }) => ipcRenderer.invoke('jev:scanTodos', payload),
+    summarizeDay: (payload: {
+      sessionId: string
+      messages?: any[]
+      dayEndTime?: number
+      displayName?: string
+      avatarUrl?: string
+      forceRefresh?: boolean
+    }) => ipcRenderer.invoke('jev:summarizeDay', payload)
   }
 })

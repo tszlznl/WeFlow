@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'crypto'
 import { ConfigService } from './config'
 
 export type InsightRecordTriggerReason = 'activity' | 'silence' | 'test' | 'manual' | 'message_analysis'
-export type InsightRecordSourceType = 'insight' | 'message_analysis' | 'jev_todo'
+export type InsightRecordSourceType = 'insight' | 'message_analysis' | 'jev_todo' | 'jev_diary'
 
 export interface MessageInsightAnalysis {
   explicitText: string
@@ -354,6 +354,18 @@ class InsightRecordService {
       record.read = true
       this.persist()
     }
+    return { success: true }
+  }
+
+  /** 删单条记录（日记同一天重建时用，clearRecords 只能按创建时间范围清，做不到按天去重） */
+  deleteRecord(id: string): { success: boolean; error?: string } {
+    this.ensureLoaded()
+    const normalizedId = String(id || '').trim()
+    const scope = this.getCurrentAccountScope()
+    const before = this.records.length
+    this.records = this.records.filter((item) => !(item.id === normalizedId && item.accountScope === scope))
+    if (this.records.length === before) return { success: false, error: '未找到该见解记录' }
+    this.persist()
     return { success: true }
   }
 

@@ -22,7 +22,7 @@ export interface SocialSaveWeiboCookieResult {
 }
 
 export type InsightRecordTriggerReason = 'activity' | 'silence' | 'test' | 'manual' | 'message_analysis'
-export type InsightRecordSourceType = 'insight' | 'message_analysis' | 'jev_todo'
+export type InsightRecordSourceType = 'insight' | 'message_analysis' | 'jev_todo' | 'jev_diary'
 
 export interface MessageInsightAnalysis {
   explicitText: string
@@ -1753,7 +1753,31 @@ export interface ElectronAPI {
       scanned: number
       error?: string
     }>
+    summarizeDay: (payload: {
+      sessionId: string
+      messages?: any[]
+      dayEndTime?: number
+      displayName?: string
+      avatarUrl?: string
+      forceRefresh?: boolean
+    }) => Promise<{
+      success: boolean
+      diary?: JevDiary
+      error?: string
+    }>
   }
+}
+
+/** 每日总结：一整天对话的结论拼装（只读） */
+export interface JevDiary {
+  mood?: string
+  moodPct: number
+  hasHighlight: boolean
+  highlightPct: number
+  unresolved: boolean
+  unresolvedPct: number
+  messageCount: number
+  text: string
 }
 
 /** 消息标注徽标：一条对方消息的判断结论（英文 choice key 由前端查表翻中文） */

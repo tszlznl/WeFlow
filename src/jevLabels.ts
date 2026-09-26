@@ -42,6 +42,15 @@ export const TODO_KIND_LABELS: Record<string, string> = {
   other: '其他'
 }
 
+/** 日记情绪走向：key 对齐 electron/services/jev/diaryQuestions.ts 的 criteria。 */
+export const DIARY_MOOD_LABELS: Record<string, string> = {
+  relaxed: '轻松愉快',
+  routine: '平淡日常',
+  friction: '小有摩擦',
+  conflict: '明显冲突',
+  distant: '冷战疏远'
+}
+
 /** 把英文 choice key 翻成中文，找不到就原样返回。 */
 export function choiceLabel(questionKey: string, raw: string | undefined): string {
   if (!raw) return '—'
