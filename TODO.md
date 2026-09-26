@@ -111,11 +111,12 @@
 
 ### 📋 待办
 
-- **跑一次 background 探针**：`JEV_JUDGE_KEY=… npm run test:jev:bg-probe`。
-  结论决定背景信息（联系人备注 / 知识库命中）怎么接——`ACCEPTED AND READ` 才能按计划
-  加 `state.background`；`ACCEPTED BUT IGNORED` 得折进 `chat.relationship`。**结论写回本文件。**
-  注意：`background` 在两个 Python 版里都**只是设计意图**（build_state 从没接过它），
-  这是新功能不是移植缺口。
+- ✅ **background 探针已跑（2026-09-26，真实 key）**：结论 **ACCEPTED BUT IGNORED**。
+  两次都 HTTP 200、`true_intent` 概率分布完全相同（`confirm_you_care` 0.99 /
+  `request_action` 0.01 / `vent_anger` 0），加不加顶层 `background` 字段结果一模一样。
+  → **不能加 `state.background`，端点没把它喂给模型。** 背景信息（联系人备注 /
+  知识库命中）要折进 `chat.relationship` 之类的已有字段，或者塞进题面 instructions。
+  这也印证了 `background` 在两个 Python 版里本来就只是设计意图（build_state 从没接过）。
 - **实测验证开关修复**：Jev 启用开关的类名 bug 已修并打进安装包，但因 desktop 控制会话锁死，
   没能实际点一下确认渲染。**下次会话用 computer-use 进设置页点一下开关，确认胶囊滑块可见可点。**
 - **实测验证中文候选**：`norm()` 的中文修复已进安装包，但实测时用的还是旧包（返回空候选）。
