@@ -3299,7 +3299,7 @@
         color: var(--text-primary);
         font-size: 12px;
         outline: none;
-        transition: border-color 0.15s;
+        transition: border-color 0.15s var(--ease);
 
         &:focus {
           border-color: var(--primary);
@@ -3313,9 +3313,9 @@
       .jev-agent-confirm {
         margin-top: 8px;
         padding: 8px 10px;
-        border: 1px solid var(--warning);
+        border: 1px solid var(--amber);
         border-radius: 8px;
-        background: var(--card-bg);
+        background: var(--amber-soft);
       }
 
       .jev-agent-confirm-prompt {
@@ -3337,7 +3337,11 @@
         border-radius: 6px;
         font-size: 12px;
         cursor: pointer;
-        transition: opacity 0.15s;
+        transition: opacity 0.15s var(--ease), transform 0.12s var(--ease);
+
+        &:active:not(:disabled) {
+          transform: scale(0.96);
+        }
 
         &:disabled {
           opacity: 0.5;
@@ -3369,10 +3373,10 @@
         padding: 6px 9px;
         border-radius: 8px;
         background: var(--bg-secondary);
-        border-left: 3px solid var(--success);
+        border-left: 3px solid var(--green);
 
         &.fail {
-          border-left-color: var(--danger);
+          border-left-color: var(--red);
         }
       }
 

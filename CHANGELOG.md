@@ -4,6 +4,42 @@
 
 ---
 
+## UI 设计语言（第一批）— 2026-09-26（未发版，main 分支）
+
+按 `magpie-UI-DESIGN.md` 里**与框架无关**的设计约定，给 WeFlow 加一层全局设计语言。
+magpie 是 Go+Wails 的另一个应用，视图结构（agents/gateway/routing…）搬不过来，
+它的状态管理、`el()` 建 DOM、无框架约定在 React 里也是反模式——**只搬设计语言，不搬架构**。
+
+### 新增（main.scss，全部是加法，旧 token 不删）
+
+- **统一缓动曲线 `--ease: cubic-bezier(.2,.8,.2,1)`** — 之前 379 条 transition 散落
+  8 种 cubic-bezier，现在全 App 一条曲线。另加 `--ease-unroll` / `--ease-rollup`
+  （对应 magpie 与 Go 端共享的 UNROLL / ROLLUP 命名曲线）。
+- **`prefers-reduced-motion` 全局清零** — 之前完全没支持。用户在系统层声明减少动效，
+  所有 animation/transition 一律 0.01ms。无障碍不是可选项（magpie §8）。
+- **按压语法 `.press` / `.press-ic`** — 控件按下 `scale(.96)`、图标 `.9`，一套语法全 App 统一。
+  公共 `.btn` 已内置，所有用 `.btn` 的地方自动获得。
+- **语义色三对** — `--green` / `--red` / `--amber` + 各自 `-soft` 浅底（徽章、提示条用）。
+  深色模式**不是反相**：语义色提亮到高明度 pastel、`-soft` 降饱和（深背景会吃掉高饱和色）。
+  含义固定，不许挪用（magpie §4 的 `--drift` 规矩同理）。
+- **统一空状态原语 `.empty-state`** — 一行加粗标题 + 一行弱化说明 + 可选 CTA，
+  每个视图/列表都该有，不许留白（magpie §6）。现有页面级类不动，新增统一用这个。
+
+### 修复
+
+- **`--success` 未定义** — ChatPage.scss 用了两次 `var(--success)` 但从来没定义过，
+  Agent 执行成功步骤条的左边框静默失效（`border-left: 3px solid` 空值 = 黑色）。
+  改用新语义色 `--green`。这是 Phase 5 视觉上一条没被发现的坏样式。
+
+### 不搬的（明确排除）
+
+- i18n 体系（key 就是英文串）— WeFlow 是中文 App，无此需求。
+- vanilla JS / `el(tag,cls,text)` 建 DOM / 无 bundler — 与 React 架构相反，照搬是反模式。
+- Wails 窗口/托盘/面板着色机制 — Electron 无对应概念。
+- 容器查询响应式、FLIP segmented control — 每页面大改，留到后面。
+
+---
+
 ## Phase 5：Agent — 2026-09-26（未发版，main 分支）
 
 命令式入口的 Agent：给一条命令，决策接口选工具、排计划，副作用工具先问一句再执行。

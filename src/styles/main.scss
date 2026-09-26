@@ -1,5 +1,12 @@
 // WeFlow — ChatGPT-inspired design token system
 // Accent colors per theme, backgrounds unified across themes.
+//
+// 设计语言参照 magpie-UI-DESIGN.md（与框架无关的部分）：
+// - 一条缓动曲线 --ease 走全 App，不散落各种 cubic-bezier；
+// - 语义色三对（green/red/amber + 各自的 -soft 背景），含义固定；
+// - 按压语法统一 .press（scale .96，图标 .9）；
+// - prefers-reduced-motion 全局清零，无障碍不是可选项。
+// 旧 token 全部保留，新 token 只做加法——25 个页面迁移过来之前不能断 API。
 @use './chat-patterns.scss';
 
 // =============================================
@@ -57,6 +64,23 @@
   --glow-color: rgba(168, 140, 100, 0.03);
   --desc-text: #a8a29e;
   --brand-text: #d6d3d1;
+
+  // ---- Motion（参照 magpie：一条曲线，全 App 用）----
+  // 起手快、落点软。379 条 transition 之前散落 8 种 cubic-bezier，统一到这一条。
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  // 与 magpie 的 Go 端共享的命名曲线（面板展开/收起），前端这边只在动画时长上对齐
+  --ease-unroll: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-rollup: cubic-bezier(0.4, 0, 0.2, 1);
+
+  // ---- 语义色：含义固定，不许挪用 ----
+  // magpie 的规矩：--drift 只表达一种含义。这里的 green/red/amber 同理，
+  // 成功/危险/警告各守其位，-soft 是配对的浅底（徽章、提示条用）。
+  --green: #16a34a;
+  --green-soft: rgba(22, 163, 74, 0.1);
+  --red: var(--danger);
+  --red-soft: rgba(239, 68, 68, 0.1);
+  --amber: var(--warning);
+  --amber-soft: rgba(245, 158, 11, 0.12);
 }
 
 // =============================================
@@ -101,6 +125,20 @@
   --glow-color: rgba(204, 168, 122, 0.03);
   --desc-text: #57534e;
   --brand-text: #292524;
+
+  // ---- Motion：和亮色同一套曲线，深浅模式不换缓动 ----
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-unroll: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-rollup: cubic-bezier(0.4, 0, 0.2, 1);
+
+  // ---- 语义色：暗色不是反相，是提亮 + 降饱和 ----
+  // 深背景会吃掉高饱和色，这里用高明度 pastel 配低饱和浅底，对比度才够。
+  --green: #4ade80;
+  --green-soft: rgba(74, 222, 128, 0.14);
+  --red: var(--danger);
+  --red-soft: rgba(248, 113, 113, 0.14);
+  --amber: var(--warning);
+  --amber-soft: rgba(251, 191, 36, 0.15);
 }
 
 // =============================================
@@ -280,7 +318,12 @@ body {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition: background 0.15s var(--ease), opacity 0.15s var(--ease), transform 0.12s var(--ease);
+
+  // 按压语法直接挂在公共按钮上，所有用 .btn 的地方自动获得
+  &:active:not(:disabled) {
+    transform: scale(0.96);
+  }
 
   &-primary {
     background: var(--primary);
@@ -344,7 +387,7 @@ body {
     right: 0;
     bottom: 0;
     background-color: var(--bg-tertiary);
-    transition: 0.3s;
+    transition: background-color 0.25s var(--ease), border-color 0.25s var(--ease);
     border-radius: 24px;
     border: 1px solid var(--border-color);
 
@@ -356,7 +399,7 @@ body {
       left: 2px;
       bottom: 2px;
       background-color: var(--text-tertiary);
-      transition: 0.3s;
+      transition: transform 0.25s var(--ease), background-color 0.25s var(--ease);
       border-radius: 50%;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     }
@@ -387,4 +430,75 @@ body {
   border-radius: 50%;
   object-fit: cover;
   user-select: none;
+}
+
+// =============================================
+// 按压语法（参照 magpie §8：一种按压语法，全 App 统一）
+// =============================================
+// 控件按下 scale(.96)，图标 .9。用法：给按钮加 .press，给按钮里的图标加 .press-ic。
+// 不要自己写 :active { transform: scale(...) }——要按就按这一套。
+.press {
+  transition: transform 0.12s var(--ease);
+
+  &:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+}
+
+.press-ic {
+  transition: transform 0.12s var(--ease);
+}
+
+.press:active:not(:disabled) .press-ic {
+  transform: scale(0.9);
+}
+
+// =============================================
+// 统一空状态（参照 magpie §6：每个视图、每个列表都要有空状态，不许留白）
+// =============================================
+// 一行加粗标题 + 一行弱化说明，可选一个 CTA。已存在的页面级空状态类不动，
+// 新增的统一用这个，逐步收敛。
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+
+  .empty-state-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .empty-state-desc {
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 320px;
+  }
+
+  // 有 CTA 时标题和说明之间留多点空
+  .empty-state-cta {
+    margin-top: 8px;
+  }
+}
+
+// =============================================
+// 无障碍：reduced-motion 全局清零（参照 magpie §8）
+// =============================================
+// 用户在系统层声明了减少动效，所有动画一律归零。这是硬性要求，不是可选项——
+// 前庭敏感的用户会被自动播放/滑入动画引发不适。特性级的清零（比如实时流光）
+// 在各自组件里再加，这里管全局。
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
